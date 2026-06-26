@@ -1,23 +1,284 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import type { MovementState } from '../components/ar/PoseCamera'
-
-const ATTR_COLOR: Record<string, number> = {
-  arc: 0x00d4ff, plasma: 0xff4466, bio: 0x44ff88, cryo: 0x44aaff, cyber: 0xaa44ff,
-}
+import type { MovementState, DetectedPose } from '../components/ar/PoseCamera'
+import type { CharacterId, MapSnapshot } from '../types'
+import { CHARACTERS } from '../store/gameStore'
+import { useGameStore } from '../store/gameStore'
 
 const MOVE_SPEED = 0.12
 const TURN_SPEED = 0.08
+const ATTACK_RANGE = 4.5
+const CHASE_RANGE = 16
+const ENEMY_MELEE_RANGE = 2.8
+const MOB_RESPAWN_FRAMES = 360
 
-interface Props {
-  attribute: string
-  movementRef: React.MutableRefObject<MovementState>
-  compassRef?: React.MutableRefObject<number> // 플레이어 Y축 회전각(라디안)
+const FORMATION = [
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(-1.8, 0, 2.2),
+  new THREE.Vector3(1.8, 0, 2.2),
+  new THREE.Vector3(0, 0, 4.0),
+]
+
+interface CharUnit {
+  group: THREE.Group
+  legs: THREE.Mesh[]
+  arms: THREE.Mesh[]
+  rimLight: THREE.PointLight
 }
 
-export default function GameScene({ attribute, movementRef, compassRef }: Props) {
+interface Enemy {
+  type: 'mob' | 'boss'
+  group: THREE.Group
+  body: THREE.Mesh
+  hp: number
+  maxHp: number
+  exp: number
+  state: 'alive' | 'dying' | 'dead'
+  spawnPos: THREE.Vector3
+  wanderTarget: THREE.Vector3
+  wanderTimer: number
+  dyingTimer: number
+  respawnTimer: number
+  hitFlashTimer: number
+  attackTimer: number
+  hpBarPivot: THREE.Group
+  hpFill: THREE.Mesh
+  hpBarWidth: number
+  originalColor: number
+}
+
+interface Props {
+  selectedCharacters: CharacterId[]
+  movementRef: React.MutableRefObject<MovementState>
+  compassRef?: React.MutableRefObject<number>
+  attackEventRef?: React.MutableRefObject<{ pose: DetectedPose; seq: number }>
+  mapRef?: React.MutableRefObject<MapSnapshot>
+}
+
+// ── 캐릭터 빌더 ────────────────────────────────────────────
+
+function buildLowPolyCharacter(color: number) {
+  const group = new THREE.Group()
+
+  // Head — character's attribute color (bright, visible)
+  const headMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35 })
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.48), headMat)
+  head.position.y = 1.9
+  head.castShadow = true
+  group.add(head)
+
+  // Body suit — slightly lighter purple so it shows against the background
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3d2a7a, emissive: 0x1a1040, emissiveIntensity: 0.4 })
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.84, 0.32), bodyMat)
+  body.position.y = 1.2
+  body.castShadow = true
+  group.add(body)
+
+  // Chest accent — character color stripe
+  const accentMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 })
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.34), accentMat)
+  chest.position.set(0, 1.3, 0)
+  group.add(chest)
+
+  // Legs
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x241850, emissive: 0x0e0a2a, emissiveIntensity: 0.3 })
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.24), legMat)
+  legL.position.set(-0.19, 0.6, 0)
+  legL.castShadow = true
+  group.add(legL)
+
+  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.68, 0.24), legMat)
+  legR.position.set(0.19, 0.6, 0)
+  legR.castShadow = true
+  group.add(legR)
+
+  // Arms — character color
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.58, 0.2), headMat)
+  armL.position.set(-0.48, 1.25, 0)
+  armL.castShadow = true
+  group.add(armL)
+
+  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.58, 0.2), headMat)
+  armR.position.set(0.48, 1.25, 0)
+  armR.castShadow = true
+  group.add(armR)
+
+  // Core gem (glowing)
+  const core = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.13),
+    new THREE.MeshBasicMaterial({ color }),
+  )
+  core.position.set(0, 1.2, 0.18)
+  group.add(core)
+
+  // Scale up slightly for better visibility
+  group.scale.setScalar(1.15)
+
+  return { group, legs: [legL, legR] as THREE.Mesh[], arms: [armL, armR] as THREE.Mesh[] }
+}
+
+function buildEnemy(type: 'mob' | 'boss'): Enemy {
+  const isBoss = type === 'boss'
+  const s = isBoss ? 2.2 : 1.0
+  const maxHp = isBoss ? 400 : 80
+  const exp = isBoss ? 200 : 20
+  const color = isBoss ? 0xdd2200 : 0xaa1500
+
+  const group = new THREE.Group()
+  const bodyMat = new THREE.MeshLambertMaterial({ color })
+  const body = new THREE.Mesh(new THREE.OctahedronGeometry(0.55 * s, 0), bodyMat)
+  body.position.y = 0.55 * s
+  group.add(body)
+
+  const spike = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.22 * s, 0),
+    new THREE.MeshBasicMaterial({ color: isBoss ? 0xff6600 : 0xff3333 }),
+  )
+  spike.position.set(0.85 * s, 0.55 * s, 0)
+  group.add(spike)
+
+  if (isBoss) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.95, 0.1, 6, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff4400 }),
+    )
+    ring.rotation.x = Math.PI / 2
+    ring.position.y = 0.55 * s
+    group.add(ring)
+    const orb = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.3, 0),
+      new THREE.MeshBasicMaterial({ color: 0xff8800 }),
+    )
+    orb.position.set(-0.85 * s, 0.55 * s, 0)
+    group.add(orb)
+  }
+
+  const hpBarWidth = isBoss ? 2.4 : 1.5
+  const hpBarBg = new THREE.Mesh(
+    new THREE.PlaneGeometry(hpBarWidth, 0.2),
+    new THREE.MeshBasicMaterial({ color: 0x220000, side: THREE.DoubleSide }),
+  )
+  const hpFill = new THREE.Mesh(
+    new THREE.PlaneGeometry(hpBarWidth * 0.95, 0.15),
+    new THREE.MeshBasicMaterial({ color: isBoss ? 0xff6600 : 0xff2222, side: THREE.DoubleSide }),
+  )
+  hpFill.position.z = 0.01
+
+  const hpBarPivot = new THREE.Group()
+  hpBarPivot.add(hpBarBg)
+  hpBarPivot.add(hpFill)
+
+  return {
+    type, group, body,
+    hp: maxHp, maxHp, exp,
+    state: 'alive',
+    spawnPos: new THREE.Vector3(),
+    wanderTarget: new THREE.Vector3(),
+    wanderTimer: 0,
+    dyingTimer: 0,
+    respawnTimer: 0,
+    hitFlashTimer: 0,
+    attackTimer: isBoss ? 90 : 120,
+    hpBarPivot, hpFill,
+    hpBarWidth,
+    originalColor: color,
+  }
+}
+
+function buildPlanetInterior(scene: THREE.Scene) {
+  const crystalMeshes: THREE.Mesh[] = []
+
+  const groundGeo = new THREE.PlaneGeometry(200, 200, 50, 50)
+  const ground = new THREE.Mesh(
+    groundGeo,
+    new THREE.MeshStandardMaterial({ color: 0x1a1040, roughness: 0.9, metalness: 0.1 }),
+  )
+  ground.rotation.x = -Math.PI / 2
+  ground.receiveShadow = true
+  const gPos = groundGeo.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < gPos.count; i++) gPos.setY(i, (Math.random() - 0.5) * 0.7)
+  gPos.needsUpdate = true
+  groundGeo.computeVertexNormals()
+  scene.add(ground)
+
+  const spots = [
+    { px: -18, pz: -22, color: 0x00ffcc, n: 5 },
+    { px: 15,  pz: -18, color: 0xaa44ff, n: 4 },
+    { px: 0,   pz: -45, color: 0xff8822, n: 6 },
+    { px: -25, pz: -35, color: 0x44aaff, n: 4 },
+    { px: 22,  pz: -40, color: 0x88ff44, n: 3 },
+    { px: 8,   pz: -15, color: 0xff44aa, n: 3 },
+    { px: -10, pz: -55, color: 0x00ffcc, n: 4 },
+    { px: 32,  pz: -28, color: 0xaa44ff, n: 3 },
+    { px: -30, pz: -20, color: 0xff8822, n: 3 },
+    { px: 5,   pz: -65, color: 0x44aaff, n: 5 },
+  ]
+  spots.forEach(({ px, pz, color, n }) => {
+    for (let i = 0; i < n; i++) {
+      const h = 1.2 + Math.random() * 3.5
+      const crystal = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18 + Math.random() * 0.32, h, 5),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
+      )
+      crystal.position.set(
+        px + (Math.random() - 0.5) * 3.5,
+        h / 2,
+        pz + (Math.random() - 0.5) * 3.5,
+      )
+      crystal.rotation.set(
+        (Math.random() - 0.5) * 0.25,
+        Math.random() * Math.PI * 2,
+        (Math.random() - 0.5) * 0.25,
+      )
+      scene.add(crystal)
+      crystalMeshes.push(crystal)
+    }
+  })
+
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x2a1a50, roughness: 0.95 })
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1030, roughness: 0.95 })
+  for (let i = 0; i < 22; i++) {
+    const h = 5 + Math.random() * 14
+    const w = 1 + Math.random() * 3.5
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 0.9), Math.random() < 0.5 ? rockMat : darkMat)
+    const angle = Math.random() * Math.PI * 2
+    const r = 18 + Math.random() * 65
+    pillar.position.set(Math.cos(angle) * r, h / 2 - 0.5, -5 + Math.sin(angle) * r)
+    pillar.rotation.y = Math.random() * 0.5
+    scene.add(pillar)
+  }
+
+  const stalMat = new THREE.MeshStandardMaterial({ color: 0x200e3a, roughness: 0.9 })
+  for (let i = 0; i < 35; i++) {
+    const h = 2 + Math.random() * 6
+    const stal = new THREE.Mesh(new THREE.ConeGeometry(0.3 + Math.random() * 0.55, h, 5), stalMat)
+    stal.rotation.z = Math.PI
+    stal.position.set((Math.random() - 0.5) * 100, 22 + Math.random() * 10, -Math.random() * 90)
+    stal.rotation.y = Math.random() * Math.PI
+    scene.add(stal)
+  }
+
+  const count = 350
+  const positions = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) {
+    positions[i * 3 + 0] = (Math.random() - 0.5) * 100
+    positions[i * 3 + 1] = Math.random() * 14
+    positions[i * 3 + 2] = -Math.random() * 90
+  }
+  const particleGeo = new THREE.BufferGeometry()
+  particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  scene.add(new THREE.Points(
+    particleGeo,
+    new THREE.PointsMaterial({ color: 0x9977ff, size: 0.16, transparent: true, opacity: 0.7, sizeAttenuation: true }),
+  ))
+
+  return { crystalMeshes, particlePositions: positions, particleGeo }
+}
+
+// ── 컴포넌트 ────────────────────────────────────────────────
+
+export default function GameScene({ selectedCharacters, movementRef, compassRef, attackEventRef, mapRef }: Props) {
   const mountRef = useRef<HTMLDivElement>(null)
-  const frameRef = useRef<number>(0)
 
   useEffect(() => {
     const mount = mountRef.current
@@ -26,134 +287,299 @@ export default function GameScene({ attribute, movementRef, compassRef }: Props)
     const w = mount.clientWidth
     const h = mount.clientHeight
 
-    // ── 렌더러 ──
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(w, h)
     renderer.setPixelRatio(window.devicePixelRatio)
     renderer.shadowMap.enabled = true
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 0.9
+    renderer.toneMappingExposure = 1.3
     mount.appendChild(renderer.domElement)
 
-    // ── 씬 ──
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x040e1a)
-    scene.fog = new THREE.Fog(0x040e1a, 40, 130)
+    scene.background = new THREE.Color(0x07001a)
+    scene.fog = new THREE.FogExp2(0x0c0028, 0.010)
 
-    // ── 카메라 ──
     const camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 200)
     camera.position.set(0, 4, 10)
-    camera.lookAt(0, 1, 0)
 
-    // ── 조명 ──
-    scene.add(new THREE.AmbientLight(0x112233, 1.2))
-    const sun = new THREE.DirectionalLight(0xff8844, 1.5)
-    sun.position.set(20, 30, 10)
-    sun.castShadow = true
-    scene.add(sun)
+    // ── 조명 — 캐릭터 가시성 개선 ──
+    // Soft ambient (blueish purple)
+    scene.add(new THREE.AmbientLight(0x8866cc, 1.6))
+    // Key light from above front
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.8)
+    keyLight.position.set(0, 20, 10)
+    keyLight.castShadow = true
+    scene.add(keyLight)
+    // Fill from side
+    const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4)
+    fillLight.position.set(-10, 8, 0)
+    scene.add(fillLight)
 
-    const attrColor = ATTR_COLOR[attribute] ?? 0x00d4ff
-    const rimLight = new THREE.PointLight(attrColor, 2, 20)
-    rimLight.position.set(-5, 3, -5)
-    scene.add(rimLight)
+    // Crystal accent lights
+    const glowLights = [
+      [0x00ffcc, -18, 3, -22], [0xaa44ff, 15, 4, -18],
+      [0xff8822, 0, 3, -45],   [0x44aaff, -25, 3, -35],
+      [0x88ff44, 22, 3, -40],
+    ] as [number, number, number, number][]
+    glowLights.forEach(([c, x, y, z]) => {
+      const pl = new THREE.PointLight(c, 2.0, 28)
+      pl.position.set(x, y, z)
+      scene.add(pl)
+    })
 
-    // ── 월드 ──
-    buildDesertWorld(scene)
-    const stars = buildStars()
-    scene.add(stars)
+    // Party follow light — always illuminates characters
+    const partyLight = new THREE.PointLight(0xffffff, 2.2, 14)
+    scene.add(partyLight)
 
-    // ── 플레이어 ──
-    const { group: player, legs, arms } = buildLowPolyCharacter(attrColor)
-    player.position.set(0, 0, 0)
-    scene.add(player)
+    const { crystalMeshes, particlePositions, particleGeo } = buildPlanetInterior(scene)
 
-    // 플레이어가 향하는 방향 (Y축 회전 각도, 라디안)
-    // 0 = 전방(-Z), π/2 = 오른쪽(+X), -π/2 = 왼쪽(-X)
-    let facingAngle = Math.PI // 카메라 방향 기준 앞쪽
+    // Characters
+    const ids = selectedCharacters.length > 0 ? selectedCharacters : ['ian_m' as CharacterId]
+    const units: CharUnit[] = ids.map((id) => {
+      const charData = CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0]
+      const colorHex = parseInt(charData.color.replace('#', ''), 16)
+      const { group, legs, arms } = buildLowPolyCharacter(colorHex)
+      scene.add(group)
+      const rimLight = new THREE.PointLight(colorHex, 1.6, 7)
+      scene.add(rimLight)
+      return { group, legs, arms, rimLight }
+    })
 
-    // 카메라 오프셋 (플레이어 뒤에서 따라오는 거리)
+    // Initialize HP
+    useGameStore.getState().initPartyHp(ids.length)
+
+    const leader = units[0]
+    leader.group.position.set(0, 0, 0)
+
     const CAM_OFFSET = new THREE.Vector3(0, 4, 9)
     const camTarget = new THREE.Vector3()
-
     let t = 0
+    let lastAttackSeq = -1
+
+    // Enemies
+    const enemies: Enemy[] = []
+    const mobSpawns: [number, number][] = [
+      [-12, -22], [10, -26], [-18, -33],
+      [20, -19], [5, -40], [-8, -47],
+    ]
+    mobSpawns.forEach(([x, z]) => {
+      const e = buildEnemy('mob')
+      e.spawnPos.set(x, 0, z)
+      e.group.position.set(x, 0, z)
+      e.wanderTarget.set(x, 0, z)
+      scene.add(e.group)
+      scene.add(e.hpBarPivot)
+      enemies.push(e)
+    })
+
+    const boss = buildEnemy('boss')
+    boss.spawnPos.set(0, 0, -58)
+    boss.group.position.set(0, 0, -58)
+    boss.wanderTarget.set(0, 0, -58)
+    scene.add(boss.group)
+    scene.add(boss.hpBarPivot)
+    enemies.push(boss)
+
+    const animRef = { id: 0 }
 
     function animate() {
-      frameRef.current = requestAnimationFrame(animate)
+      animRef.id = requestAnimationFrame(animate)
       t += 0.016
 
       const mv = movementRef.current
+      const leaderPos = leader.group.position
 
+      // Read move speed bonus from equipped accessories
+      const accStats = useGameStore.getState().getEquippedStats()
+      const moveBonus = accStats.moveSpeed / 100
+      const dynSpeed = MOVE_SPEED * (0.35 + mv.speed * 0.65) * (1 + moveBonus)
+
+      // Leader movement
       if (mv.moving) {
-        // ── 방향 결정 ──
-        let targetAngle = facingAngle
-        if (mv.direction === 'forward') {
-          targetAngle = facingAngle // 현재 향하는 방향 유지
-        } else if (mv.direction === 'left') {
-          targetAngle = facingAngle - Math.PI / 2 // 왼쪽 90°
-        } else if (mv.direction === 'right') {
-          targetAngle = facingAngle + Math.PI / 2 // 오른쪽 90°
-        }
+        let targetAngle = leader.group.rotation.y
+        if (mv.direction === 'left') targetAngle -= Math.PI / 2
+        else if (mv.direction === 'right') targetAngle += Math.PI / 2
 
-        // 부드럽게 회전
-        const angleDiff = targetAngle - player.rotation.y
-        player.rotation.y += angleDiff * TURN_SPEED
+        const diff = targetAngle - leader.group.rotation.y
+        const short = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI
+        leader.group.rotation.y += short * TURN_SPEED
 
-        // 이동 방향 벡터
-        const moveDir = new THREE.Vector3(
-          Math.sin(player.rotation.y),
-          0,
-          Math.cos(player.rotation.y),
+        const dir = new THREE.Vector3(
+          Math.sin(leader.group.rotation.y), 0, Math.cos(leader.group.rotation.y),
         )
-        player.position.addScaledVector(moveDir, MOVE_SPEED)
+        leaderPos.addScaledVector(dir, dynSpeed)
 
-        // 다리 걸음 애니메이션
-        legs[0].rotation.x = Math.sin(t * 8) * 0.45
-        legs[1].rotation.x = -Math.sin(t * 8) * 0.45
-        arms[0].rotation.x = -Math.sin(t * 8) * 0.3
-        arms[1].rotation.x = Math.sin(t * 8) * 0.3
-
-        // 몸 위아래 바운스
-        player.position.y = Math.abs(Math.sin(t * 8)) * 0.08
+        units.forEach(({ legs, arms }, i) => {
+          const ph = i * 0.45
+          legs[0].rotation.x = Math.sin(t * 8 + ph) * 0.45
+          legs[1].rotation.x = -Math.sin(t * 8 + ph) * 0.45
+          arms[0].rotation.x = -Math.sin(t * 8 + ph) * 0.3
+          arms[1].rotation.x = Math.sin(t * 8 + ph) * 0.3
+        })
+        leaderPos.y = Math.abs(Math.sin(t * 8)) * 0.08
       } else {
-        // 정지: 다리 원위치 (부드럽게)
-        legs[0].rotation.x *= 0.8
-        legs[1].rotation.x *= 0.8
-        arms[0].rotation.x *= 0.8
-        arms[1].rotation.x *= 0.8
-        player.position.y *= 0.8
+        units.forEach(({ legs, arms }) => {
+          legs[0].rotation.x *= 0.8; legs[1].rotation.x *= 0.8
+          arms[0].rotation.x *= 0.8; arms[1].rotation.x *= 0.8
+        })
+        leaderPos.y *= 0.8
       }
 
-      // ── 카메라가 플레이어 뒤에서 따라오기 ──
-      const desiredCamPos = player.position.clone().add(
-        CAM_OFFSET.clone().applyEuler(new THREE.Euler(0, player.rotation.y - Math.PI, 0))
-      )
-      camera.position.lerp(desiredCamPos, 0.06)
+      // Follower formation
+      units.slice(1).forEach((unit, i) => {
+        const offset = FORMATION[i + 1].clone().applyEuler(new THREE.Euler(0, leader.group.rotation.y, 0))
+        unit.group.position.lerp(leaderPos.clone().add(offset), 0.05)
+        unit.group.rotation.y = leader.group.rotation.y
+        if (mv.moving) unit.group.position.y = Math.abs(Math.sin(t * 8 + (i + 1) * 0.45)) * 0.08
+        else unit.group.position.y *= 0.8
+      })
 
-      camTarget.lerp(
-        new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z),
-        0.08
+      // Party follow light above leader
+      partyLight.position.set(leaderPos.x, leaderPos.y + 6, leaderPos.z)
+
+      // Rim lights per unit
+      units.forEach(({ group, rimLight }, i) => {
+        rimLight.position.set(group.position.x - 1.5, group.position.y + 2.5, group.position.z - 1.5)
+        rimLight.intensity = 1.4 + Math.sin(t * 1.5 + i) * 0.4
+      })
+
+      // Attack from pose
+      if (attackEventRef && attackEventRef.current.seq !== lastAttackSeq) {
+        lastAttackSeq = attackEventRef.current.seq
+        const dmgMap: Record<string, number> = { squat: 35, jump: 25, plank: 20 }
+        const dmg = dmgMap[attackEventRef.current.pose] ?? 0
+        if (dmg > 0) {
+          enemies.forEach((e) => {
+            if (e.state !== 'alive') return
+            if (e.group.position.distanceTo(leaderPos) <= ATTACK_RANGE) {
+              e.hp = Math.max(e.hp - dmg, 0)
+              e.hitFlashTimer = 8
+              if (e.hp <= 0) {
+                e.state = 'dying'
+                e.dyingTimer = 24
+                const { addExp, addCrystals } = useGameStore.getState()
+                addExp(e.exp)
+                addCrystals(e.type === 'boss' ? 80 : 10)
+              }
+            }
+          })
+        }
+      }
+
+      // Enemy AI + attack player
+      enemies.forEach((e) => {
+        if (e.state === 'dead') {
+          if (--e.respawnTimer <= 0) {
+            e.state = 'alive'; e.hp = e.maxHp
+            e.group.position.copy(e.spawnPos); e.group.scale.setScalar(1); e.group.visible = true
+            e.hpBarPivot.visible = true; e.wanderTarget.copy(e.spawnPos); e.wanderTimer = 0
+            ;(e.body.material as THREE.MeshLambertMaterial).color.setHex(e.originalColor)
+          }
+          return
+        }
+        if (e.state === 'dying') {
+          e.group.scale.setScalar(Math.max(--e.dyingTimer / 24, 0))
+          e.group.position.y += 0.06
+          e.hpBarPivot.visible = false
+          if (e.dyingTimer <= 0) {
+            e.state = 'dead'; e.group.visible = false
+            e.respawnTimer = e.type === 'boss' ? 1800 : MOB_RESPAWN_FRAMES
+          }
+          return
+        }
+
+        const dist = e.group.position.distanceTo(leaderPos)
+        if (dist < CHASE_RANGE) {
+          const d = new THREE.Vector3().subVectors(leaderPos, e.group.position).setY(0)
+          if (d.length() > 0.05) {
+            e.group.position.addScaledVector(d.normalize(), e.type === 'boss' ? 0.022 : 0.04)
+            e.group.lookAt(leaderPos.x, e.group.position.y, leaderPos.z)
+          }
+
+          // Enemy attacks nearby party members
+          if (--e.attackTimer <= 0) {
+            e.attackTimer = e.type === 'boss' ? 90 : 120
+            const dmg = e.type === 'boss' ? 20 : 8
+            units.forEach((unit, idx) => {
+              if (e.group.position.distanceTo(unit.group.position) < ENEMY_MELEE_RANGE) {
+                useGameStore.getState().damagePartyMember(idx, dmg)
+              }
+            })
+          }
+        } else {
+          if (--e.wanderTimer <= 0) {
+            const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 9
+            e.wanderTarget.set(e.spawnPos.x + Math.cos(a) * r, 0, e.spawnPos.z + Math.sin(a) * r)
+            e.wanderTimer = 80 + Math.floor(Math.random() * 100)
+          }
+          const wd = new THREE.Vector3().subVectors(e.wanderTarget, e.group.position).setY(0)
+          if (wd.length() > 0.15) e.group.position.addScaledVector(wd.normalize(), 0.015)
+        }
+
+        e.group.position.y = Math.sin(t * 1.8 + e.spawnPos.x) * 0.12 + 0.5
+        if (e.type === 'boss') { e.group.rotation.y += 0.012; e.body.rotation.y += 0.025 }
+
+        if (e.hitFlashTimer > 0) {
+          e.hitFlashTimer--
+          ;(e.body.material as THREE.MeshLambertMaterial).color.setHex(
+            e.hitFlashTimer % 4 < 2 ? 0xffffff : e.originalColor,
+          )
+        }
+
+        e.hpBarPivot.position.set(
+          e.group.position.x,
+          e.group.position.y + (e.type === 'boss' ? 4.8 : 2.9),
+          e.group.position.z,
+        )
+        e.hpBarPivot.quaternion.copy(camera.quaternion)
+        const pct = Math.max(e.hp / e.maxHp, 0)
+        e.hpFill.scale.x = Math.max(pct, 0.001)
+        e.hpFill.position.x = (e.hpBarWidth * 0.95 / 2) * (pct - 1)
+      })
+
+      // Crystal pulse
+      crystalMeshes.forEach((c, i) => {
+        (c.material as THREE.MeshBasicMaterial).opacity = 0.7 + Math.sin(t * 1.3 + i * 0.65) * 0.25
+      })
+
+      // Particle float
+      for (let i = 0; i < particlePositions.length; i += 3) {
+        particlePositions[i + 1] += 0.008
+        if (particlePositions[i + 1] > 14) particlePositions[i + 1] = 0
+      }
+      particleGeo.attributes.position.needsUpdate = true
+
+      // Camera follow
+      const desiredCam = leaderPos.clone().add(
+        CAM_OFFSET.clone().applyEuler(new THREE.Euler(0, leader.group.rotation.y - Math.PI, 0)),
       )
+      camera.position.lerp(desiredCam, 0.06)
+      camTarget.lerp(new THREE.Vector3(leaderPos.x, leaderPos.y + 1.5, leaderPos.z), 0.08)
       camera.lookAt(camTarget)
 
-      // 나침반 ref 업데이트
-      if (compassRef) compassRef.current = player.rotation.y
+      if (compassRef) compassRef.current = leader.group.rotation.y
 
-      // 림라이트 플레이어 추적
-      rimLight.position.set(
-        player.position.x - 5,
-        player.position.y + 3,
-        player.position.z - 5,
-      )
-      rimLight.intensity = 1.5 + Math.sin(t * 2) * 0.5
+      if (mapRef) {
+        mapRef.current = {
+          px: leaderPos.x,
+          pz: leaderPos.z,
+          pa: leader.group.rotation.y,
+          enemies: enemies.map((e) => ({
+            x: e.group.position.x,
+            z: e.group.position.z,
+            type: e.type,
+            alive: e.state === 'alive',
+          })),
+        }
+      }
 
       renderer.render(scene, camera)
     }
+
     animate()
 
-    // ── 리사이즈 ──
     function onResize() {
-      const nw = mount!.clientWidth
-      const nh = mount!.clientHeight
+      const nw = mount.clientWidth, nh = mount.clientHeight
       camera.aspect = nw / nh
       camera.updateProjectionMatrix()
       renderer.setSize(nw, nh)
@@ -161,119 +587,12 @@ export default function GameScene({ attribute, movementRef, compassRef }: Props)
     window.addEventListener('resize', onResize)
 
     return () => {
-      cancelAnimationFrame(frameRef.current)
+      cancelAnimationFrame(animRef.id)
       window.removeEventListener('resize', onResize)
       renderer.dispose()
-      mount!.removeChild(renderer.domElement)
+      if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
     }
-  }, [attribute])
+  }, [selectedCharacters.join(',')])
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
-}
-
-// ── 사막 월드 ──
-function buildDesertWorld(scene: THREE.Scene) {
-  const sandMat = new THREE.MeshLambertMaterial({ color: 0x8b6914 })
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x3d2b0a })
-  const metalMat = new THREE.MeshLambertMaterial({ color: 0x445566 })
-
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300, 30, 30), sandMat)
-  ground.rotation.x = -Math.PI / 2
-  ground.receiveShadow = true
-  const pos = ground.geometry.attributes.position
-  for (let i = 0; i < pos.count; i++) pos.setY(i, (Math.random() - 0.5) * 0.4)
-  pos.needsUpdate = true
-  ground.geometry.computeVertexNormals()
-  scene.add(ground)
-
-  const buildingPos = [
-    [-15, -20], [-8, -30], [12, -25], [20, -15],
-    [-20, -10], [18, -35], [-5, -45], [8, -40],
-    [25, -50], [-25, -55], [0, -60], [30, -30],
-  ]
-  buildingPos.forEach(([x, z]) => {
-    const bh = 3 + Math.random() * 9
-    const bw = 2 + Math.random() * 4
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bw), darkMat)
-    mesh.position.set(x, bh / 2 - 0.5, z)
-    mesh.rotation.y = Math.random() * 0.3 - 0.15
-    mesh.castShadow = true
-    scene.add(mesh)
-  })
-
-  for (let i = 0; i < 20; i++) {
-    const r = 1.5 + Math.random() * 3
-    const dune = new THREE.Mesh(new THREE.ConeGeometry(r, 0.8 + Math.random(), 5, 1), sandMat)
-    dune.position.set((Math.random() - 0.5) * 120, 0, -10 - Math.random() * 80)
-    dune.rotation.y = Math.random() * Math.PI
-    scene.add(dune)
-  }
-
-  for (let i = 0; i < 12; i++) {
-    const debris = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5 + Math.random(), 0.3 + Math.random(), 0.5 + Math.random()),
-      metalMat,
-    )
-    debris.position.set((Math.random() - 0.5) * 50, 0.1, -5 - Math.random() * 30)
-    debris.rotation.set(Math.random(), Math.random(), Math.random())
-    scene.add(debris)
-  }
-}
-
-// ── 로우폴리 캐릭터 (다리·팔 참조 반환) ──
-function buildLowPolyCharacter(color: number) {
-  const group = new THREE.Group()
-  const mat = new THREE.MeshLambertMaterial({ color })
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x223344 })
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), bodyMat)
-  body.position.y = 1.2
-  body.castShadow = true
-  group.add(body)
-
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), mat)
-  head.position.y = 1.85
-  head.castShadow = true
-  group.add(head)
-
-  // 다리 — 애니메이션용으로 ref 보관
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.65, 0.22), bodyMat)
-  legL.position.set(-0.18, 0.62, 0)
-  legL.castShadow = true
-  group.add(legL)
-
-  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.65, 0.22), bodyMat)
-  legR.position.set(0.18, 0.62, 0)
-  legR.castShadow = true
-  group.add(legR)
-
-  // 팔
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), mat)
-  armL.position.set(-0.45, 1.25, 0)
-  armL.castShadow = true
-  group.add(armL)
-
-  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.55, 0.18), mat)
-  armR.position.set(0.45, 1.25, 0)
-  armR.castShadow = true
-  group.add(armR)
-
-  const core = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.12),
-    new THREE.MeshBasicMaterial({ color }),
-  )
-  core.position.y = 1.2
-  group.add(core)
-
-  return { group, legs: [legL, legR], arms: [armL, armR] }
-}
-
-// ── 별 파티클 ──
-function buildStars() {
-  const geo = new THREE.BufferGeometry()
-  const count = 800
-  const positions = new Float32Array(count * 3)
-  for (let i = 0; i < count * 3; i++) positions[i] = (Math.random() - 0.5) * 300
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xaaccff, size: 0.3, sizeAttenuation: true }))
 }

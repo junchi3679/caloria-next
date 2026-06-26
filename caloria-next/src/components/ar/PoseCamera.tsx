@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-vision'
-import { useGameStore } from '../../store/gameStore'
 
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
@@ -34,7 +33,6 @@ function detectJump(lm: LM[]): boolean {
 
 // ── 이동 감지 ──────────────────────────────────────────────
 
-// 제자리 걸음 감지: 무릎 y좌표 진폭이 일정 이상이면 걷는 중
 function detectMarching(kneeHistory: number[]): boolean {
   if (kneeHistory.length < 10) return false
   const min = Math.min(...kneeHistory)
@@ -42,9 +40,18 @@ function detectMarching(kneeHistory: number[]): boolean {
   return max - min > 0.05
 }
 
-// 방향 감지: 어깨 기울기로 좌/우/전방 판단
-// MediaPipe y는 아래로 갈수록 증가. 미러 표시이므로 플레이어 관점과 일치.
-// lShoulder(11).y > rShoulder(12).y → 왼쪽 어깨 낮음 → 왼쪽으로 기울어짐 → 왼쪽 이동
+// 빠를수록 speed가 높아짐 (0~1): 최근 프레임의 무릎 변화량 합산
+function calcMovementSpeed(kneeHistory: number[]): number {
+  if (kneeHistory.length < 5) return 0
+  const recent = kneeHistory.slice(-12)
+  let totalChange = 0
+  for (let i = 1; i < recent.length; i++) {
+    totalChange += Math.abs(recent[i] - recent[i - 1])
+  }
+  // 느린 걸음 ~0.03, 빠른 걸음 ~0.12 → 0.10 기준으로 정규화
+  return Math.min(totalChange / 0.10, 1.0)
+}
+
 function detectDirection(lm: LM[]): 'forward' | 'left' | 'right' {
   const lShoulder = lm[11], rShoulder = lm[12]
   if (!lShoulder || !rShoulder) return 'forward'
@@ -61,6 +68,7 @@ export type MoveDirection = 'forward' | 'left' | 'right'
 export interface MovementState {
   moving: boolean
   direction: MoveDirection
+  speed: number
 }
 
 interface Props {
@@ -73,15 +81,12 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const landmarkerRef = useRef<PoseLandmarker | null>(null)
-  const addExp = useGameStore((s) => s.addExp)
-
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [currentPose, setCurrentPose] = useState<DetectedPose>('none')
-  const [moveState, setMoveState] = useState<MovementState>({ moving: false, direction: 'forward' })
+  const [moveState, setMoveState] = useState<MovementState>({ moving: false, direction: 'forward', speed: 0 })
 
   const lastPoseRef = useRef<DetectedPose>('none')
   const poseCountRef = useRef(0)
-  // 왼쪽 무릎 y 히스토리 (최근 20프레임)
   const kneeHistoryRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -139,15 +144,15 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
 
           const moving = detectMarching(kneeHistoryRef.current)
           const direction = detectDirection(lm)
-          const ms: MovementState = { moving, direction }
+          const speed = moving ? calcMovementSpeed(kneeHistoryRef.current) : 0
+          const ms: MovementState = { moving, direction, speed }
 
-          // 부모 GameScene에 실시간 전달 (ref 통해서 렌더 없이)
           if (movementRef) movementRef.current = ms
           setMoveState(ms)
 
           // 방향 표시선
           if (moving) {
-            const arrowColor = direction === 'left' ? '#ff8844' : direction === 'right' ? '#ff8844' : '#00d4ff'
+            const arrowColor = direction === 'forward' ? '#00d4ff' : '#ff8844'
             ctx!.save()
             ctx!.strokeStyle = arrowColor
             ctx!.lineWidth = 3
@@ -173,7 +178,6 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
             if (poseCountRef.current === 15) {
               setCurrentPose(pose)
               onPose?.(pose)
-              addExp(5)
             }
           } else {
             lastPoseRef.current = pose
@@ -181,9 +185,8 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
             if (pose === 'none') setCurrentPose('none')
           }
         } else {
-          // 랜드마크 없으면 정지
-          if (movementRef) movementRef.current = { moving: false, direction: 'forward' }
-          setMoveState({ moving: false, direction: 'forward' })
+          if (movementRef) movementRef.current = { moving: false, direction: 'forward', speed: 0 }
+          setMoveState({ moving: false, direction: 'forward', speed: 0 })
         }
 
         animId = requestAnimationFrame(detect)
@@ -229,11 +232,14 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
         {status === 'ready' && (
           <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-2 py-1"
             style={{ background: 'rgba(0,10,20,0.75)', borderTop: '1px solid rgba(0,212,255,0.15)' }}>
-            {/* 이동 상태 */}
             <span className="font-hud" style={{ fontSize: '0.6rem', color: moveState.moving ? '#00d4ff' : 'rgba(0,212,255,0.3)' }}>
               {moveState.moving ? DIR_LABEL[moveState.direction] : '■ 정지'}
             </span>
-            {/* 스킬 자세 */}
+            {moveState.moving && (
+              <span className="font-hud" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.6)' }}>
+                SPD {Math.round(moveState.speed * 100)}%
+              </span>
+            )}
             {currentPose !== 'none' && (
               <span className="font-hud" style={{ fontSize: '0.6rem', color: 'var(--sf-accent)' }}>
                 {POSE_LABEL[currentPose]}

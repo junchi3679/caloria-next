@@ -2,6 +2,7 @@ import { useGameStore } from './store/gameStore'
 import TitleScreen from './components/screens/TitleScreen'
 import CharacterSelect from './components/screens/CharacterSelect'
 import GameScreen from './components/screens/GameScreen'
+import GachaScreen from './components/screens/GachaScreen'
 import './index.css'
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
       {screen === 'title' && <TitleScreen />}
       {screen === 'character_select' && <CharacterSelect />}
       {screen === 'game' && <GameScreen />}
+      {screen === 'gacha' && <GachaScreen />}
     </div>
   )
 }
