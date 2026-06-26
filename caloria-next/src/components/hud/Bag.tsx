@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
-import type { Weapon, Accessory, AccessoryStat, CharacterId, Character } from '../../types'
+import type { AccessoryStat, CharacterId, Character } from '../../types'
 
 const TYPE_LABEL: Record<string, string> = {
   blade: '검', gun: '총', staff: '지팡이', bow: '활', gauntlet: '건틀릿',

@@ -12,12 +12,13 @@ const CHASE_RANGE = 16
 const ENEMY_MELEE_RANGE = 2.8
 const MOB_RESPAWN_FRAMES = 360
 
-const FORMATION = [
+const _FORMATION = [
   new THREE.Vector3(0, 0, 0),
   new THREE.Vector3(-1.8, 0, 2.2),
   new THREE.Vector3(1.8, 0, 2.2),
   new THREE.Vector3(0, 0, 4.0),
 ]
+void _FORMATION
 
 interface CharUnit {
   group: THREE.Group
@@ -404,7 +405,8 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
       units.forEach((u, i) => { u.group.visible = i === activeIdx; u.rimLight.visible = i === activeIdx })
 
       // Move speed from accessories
-      const accStats = storeState.getEquippedStats()
+      const activeCharId = storeState.selectedCharacters[storeState.activeCharIndex] as CharacterId | undefined
+      const accStats = activeCharId ? storeState.getEquippedStats(activeCharId) : { hp: 0, atk: 0, def: 0, critRate: 0, critDmg: 0, skillSpeed: 0, moveSpeed: 0 }
       const moveBonus = accStats.moveSpeed / 100
       const dynSpeed = MOVE_SPEED * (0.35 + mv.speed * 0.65) * (1 + moveBonus)
 
@@ -582,7 +584,8 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
     animate()
 
     function onResize() {
-      const nw = mount.clientWidth, nh = mount.clientHeight
+      if (!mountRef.current) return
+      const nw = mountRef.current.clientWidth, nh = mountRef.current.clientHeight
       camera.aspect = nw / nh
       camera.updateProjectionMatrix()
       renderer.setSize(nw, nh)
