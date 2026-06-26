@@ -3,6 +3,7 @@ import TitleScreen from './components/screens/TitleScreen'
 import CharacterSelect from './components/screens/CharacterSelect'
 import GameScreen from './components/screens/GameScreen'
 import GachaScreen from './components/screens/GachaScreen'
+import SkinShop from './components/screens/SkinShop'
 import './index.css'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
       {screen === 'character_select' && <CharacterSelect />}
       {screen === 'game' && <GameScreen />}
       {screen === 'gacha' && <GachaScreen />}
+      {screen === 'shop' && <SkinShop />}
     </div>
   )
 }

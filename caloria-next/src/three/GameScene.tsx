@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import type { MovementState, DetectedPose } from '../components/ar/PoseCamera'
 import type { CharacterId, MapSnapshot } from '../types'
-import { CHARACTERS } from '../store/gameStore'
+import { CHARACTERS, SKINS } from '../store/gameStore'
 import { useGameStore } from '../store/gameStore'
 
 const MOVE_SPEED = 0.12
@@ -49,6 +49,7 @@ interface Enemy {
 
 interface Props {
   selectedCharacters: CharacterId[]
+  equippedSkinsKey?: string
   movementRef: React.MutableRefObject<MovementState>
   compassRef?: React.MutableRefObject<number>
   attackEventRef?: React.MutableRefObject<{ pose: DetectedPose; seq: number }>
@@ -57,7 +58,8 @@ interface Props {
 
 // ── 캐릭터 빌더 ────────────────────────────────────────────
 
-function buildLowPolyCharacter(color: number) {
+function buildLowPolyCharacter(headColor: number, bodyColor = 0x3d2a7a) {
+  const color = headColor
   const group = new THREE.Group()
 
   // Head — character's attribute color (bright, visible)
@@ -67,8 +69,8 @@ function buildLowPolyCharacter(color: number) {
   head.castShadow = true
   group.add(head)
 
-  // Body suit — slightly lighter purple so it shows against the background
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3d2a7a, emissive: 0x1a1040, emissiveIntensity: 0.4 })
+  // Body suit
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, emissive: bodyColor, emissiveIntensity: 0.3 })
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.84, 0.32), bodyMat)
   body.position.y = 1.2
   body.castShadow = true
@@ -277,7 +279,7 @@ function buildPlanetInterior(scene: THREE.Scene) {
 
 // ── 컴포넌트 ────────────────────────────────────────────────
 
-export default function GameScene({ selectedCharacters, movementRef, compassRef, attackEventRef, mapRef }: Props) {
+export default function GameScene({ selectedCharacters, equippedSkinsKey = '', movementRef, compassRef, attackEventRef, mapRef }: Props) {
   const mountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -333,14 +335,18 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
 
     const { crystalMeshes, particlePositions, particleGeo } = buildPlanetInterior(scene)
 
-    // Characters
+    // Characters — build all selected, show only active one
     const ids = selectedCharacters.length > 0 ? selectedCharacters : ['ian_m' as CharacterId]
+    const { equippedSkins } = useGameStore.getState()
     const units: CharUnit[] = ids.map((id) => {
       const charData = CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0]
-      const colorHex = parseInt(charData.color.replace('#', ''), 16)
-      const { group, legs, arms } = buildLowPolyCharacter(colorHex)
+      const skinId = equippedSkins[id]
+      const skin = skinId ? SKINS.find((s) => s.id === skinId) : null
+      const headColorHex = skin ? skin.headColor : parseInt(charData.color.replace('#', ''), 16)
+      const bodyColorHex = skin ? skin.bodyColor : 0x3d2a7a
+      const { group, legs, arms } = buildLowPolyCharacter(headColorHex, bodyColorHex)
       scene.add(group)
-      const rimLight = new THREE.PointLight(colorHex, 1.6, 7)
+      const rimLight = new THREE.PointLight(headColorHex, 1.6, 7)
       scene.add(rimLight)
       return { group, legs, arms, rimLight }
     })
@@ -348,6 +354,7 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
     // Initialize HP
     useGameStore.getState().initPartyHp(ids.length)
 
+    // Leader is always units[0] for position tracking; active char drives camera
     const leader = units[0]
     leader.group.position.set(0, 0, 0)
 
@@ -387,61 +394,58 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
       t += 0.016
 
       const mv = movementRef.current
-      const leaderPos = leader.group.position
+      // Active character: read from store each frame (changes when user taps party slot)
+      const storeState = useGameStore.getState()
+      const activeIdx = Math.min(storeState.activeCharIndex, units.length - 1)
+      const activeUnit = units[activeIdx]
+      const activePos = activeUnit.group.position
 
-      // Read move speed bonus from equipped accessories
-      const accStats = useGameStore.getState().getEquippedStats()
+      // Show only the active character
+      units.forEach((u, i) => { u.group.visible = i === activeIdx; u.rimLight.visible = i === activeIdx })
+
+      // Move speed from accessories
+      const accStats = storeState.getEquippedStats()
       const moveBonus = accStats.moveSpeed / 100
       const dynSpeed = MOVE_SPEED * (0.35 + mv.speed * 0.65) * (1 + moveBonus)
 
-      // Leader movement
+      // Active unit movement
       if (mv.moving) {
-        let targetAngle = leader.group.rotation.y
+        let targetAngle = activeUnit.group.rotation.y
         if (mv.direction === 'left') targetAngle -= Math.PI / 2
         else if (mv.direction === 'right') targetAngle += Math.PI / 2
 
-        const diff = targetAngle - leader.group.rotation.y
+        const diff = targetAngle - activeUnit.group.rotation.y
         const short = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI
-        leader.group.rotation.y += short * TURN_SPEED
+        activeUnit.group.rotation.y += short * TURN_SPEED
 
         const dir = new THREE.Vector3(
-          Math.sin(leader.group.rotation.y), 0, Math.cos(leader.group.rotation.y),
+          Math.sin(activeUnit.group.rotation.y), 0, Math.cos(activeUnit.group.rotation.y),
         )
-        leaderPos.addScaledVector(dir, dynSpeed)
+        activePos.addScaledVector(dir, dynSpeed)
 
-        units.forEach(({ legs, arms }, i) => {
-          const ph = i * 0.45
-          legs[0].rotation.x = Math.sin(t * 8 + ph) * 0.45
-          legs[1].rotation.x = -Math.sin(t * 8 + ph) * 0.45
-          arms[0].rotation.x = -Math.sin(t * 8 + ph) * 0.3
-          arms[1].rotation.x = Math.sin(t * 8 + ph) * 0.3
-        })
-        leaderPos.y = Math.abs(Math.sin(t * 8)) * 0.08
+        const { legs, arms } = activeUnit
+        legs[0].rotation.x = Math.sin(t * 8) * 0.45
+        legs[1].rotation.x = -Math.sin(t * 8) * 0.45
+        arms[0].rotation.x = -Math.sin(t * 8) * 0.3
+        arms[1].rotation.x = Math.sin(t * 8) * 0.3
+        activePos.y = Math.abs(Math.sin(t * 8)) * 0.08
       } else {
-        units.forEach(({ legs, arms }) => {
-          legs[0].rotation.x *= 0.8; legs[1].rotation.x *= 0.8
-          arms[0].rotation.x *= 0.8; arms[1].rotation.x *= 0.8
-        })
-        leaderPos.y *= 0.8
+        const { legs, arms } = activeUnit
+        legs[0].rotation.x *= 0.8; legs[1].rotation.x *= 0.8
+        arms[0].rotation.x *= 0.8; arms[1].rotation.x *= 0.8
+        activePos.y *= 0.8
       }
 
-      // Follower formation
-      units.slice(1).forEach((unit, i) => {
-        const offset = FORMATION[i + 1].clone().applyEuler(new THREE.Euler(0, leader.group.rotation.y, 0))
-        unit.group.position.lerp(leaderPos.clone().add(offset), 0.05)
-        unit.group.rotation.y = leader.group.rotation.y
-        if (mv.moving) unit.group.position.y = Math.abs(Math.sin(t * 8 + (i + 1) * 0.45)) * 0.08
-        else unit.group.position.y *= 0.8
-      })
+      // Keep leader position in sync for compass/map (use activePos)
+      leader.group.position.copy(activePos)
+      leader.group.rotation.copy(activeUnit.group.rotation)
 
-      // Party follow light above leader
-      partyLight.position.set(leaderPos.x, leaderPos.y + 6, leaderPos.z)
+      // Party follow light above active character
+      partyLight.position.set(activePos.x, activePos.y + 6, activePos.z)
 
-      // Rim lights per unit
-      units.forEach(({ group, rimLight }, i) => {
-        rimLight.position.set(group.position.x - 1.5, group.position.y + 2.5, group.position.z - 1.5)
-        rimLight.intensity = 1.4 + Math.sin(t * 1.5 + i) * 0.4
-      })
+      // Rim light for active unit
+      activeUnit.rimLight.position.set(activePos.x - 1.5, activePos.y + 2.5, activePos.z - 1.5)
+      activeUnit.rimLight.intensity = 1.4 + Math.sin(t * 1.5) * 0.4
 
       // Attack from pose
       if (attackEventRef && attackEventRef.current.seq !== lastAttackSeq) {
@@ -451,22 +455,23 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
         if (dmg > 0) {
           enemies.forEach((e) => {
             if (e.state !== 'alive') return
-            if (e.group.position.distanceTo(leaderPos) <= ATTACK_RANGE) {
+            if (e.group.position.distanceTo(activePos) <= ATTACK_RANGE) {
               e.hp = Math.max(e.hp - dmg, 0)
               e.hitFlashTimer = 8
               if (e.hp <= 0) {
                 e.state = 'dying'
                 e.dyingTimer = 24
-                const { addExp, addCrystals } = useGameStore.getState()
+                const { addExp, addCrystals, addGold } = useGameStore.getState()
                 addExp(e.exp)
                 addCrystals(e.type === 'boss' ? 80 : 10)
+                addGold(e.type === 'boss' ? 50 : 10)
               }
             }
           })
         }
       }
 
-      // Enemy AI + attack player
+      // Enemy AI + attack active character only
       enemies.forEach((e) => {
         if (e.state === 'dead') {
           if (--e.respawnTimer <= 0) {
@@ -488,23 +493,21 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
           return
         }
 
-        const dist = e.group.position.distanceTo(leaderPos)
+        const dist = e.group.position.distanceTo(activePos)
         if (dist < CHASE_RANGE) {
-          const d = new THREE.Vector3().subVectors(leaderPos, e.group.position).setY(0)
+          const d = new THREE.Vector3().subVectors(activePos, e.group.position).setY(0)
           if (d.length() > 0.05) {
             e.group.position.addScaledVector(d.normalize(), e.type === 'boss' ? 0.022 : 0.04)
-            e.group.lookAt(leaderPos.x, e.group.position.y, leaderPos.z)
+            e.group.lookAt(activePos.x, e.group.position.y, activePos.z)
           }
 
-          // Enemy attacks nearby party members
+          // Enemy attacks the active character
           if (--e.attackTimer <= 0) {
             e.attackTimer = e.type === 'boss' ? 90 : 120
             const dmg = e.type === 'boss' ? 20 : 8
-            units.forEach((unit, idx) => {
-              if (e.group.position.distanceTo(unit.group.position) < ENEMY_MELEE_RANGE) {
-                useGameStore.getState().damagePartyMember(idx, dmg)
-              }
-            })
+            if (e.group.position.distanceTo(activePos) < ENEMY_MELEE_RANGE) {
+              useGameStore.getState().damagePartyMember(activeIdx, dmg)
+            }
           }
         } else {
           if (--e.wanderTimer <= 0) {
@@ -549,21 +552,21 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
       }
       particleGeo.attributes.position.needsUpdate = true
 
-      // Camera follow
-      const desiredCam = leaderPos.clone().add(
-        CAM_OFFSET.clone().applyEuler(new THREE.Euler(0, leader.group.rotation.y - Math.PI, 0)),
+      // Camera follows active character
+      const desiredCam = activePos.clone().add(
+        CAM_OFFSET.clone().applyEuler(new THREE.Euler(0, activeUnit.group.rotation.y - Math.PI, 0)),
       )
       camera.position.lerp(desiredCam, 0.06)
-      camTarget.lerp(new THREE.Vector3(leaderPos.x, leaderPos.y + 1.5, leaderPos.z), 0.08)
+      camTarget.lerp(new THREE.Vector3(activePos.x, activePos.y + 1.5, activePos.z), 0.08)
       camera.lookAt(camTarget)
 
-      if (compassRef) compassRef.current = leader.group.rotation.y
+      if (compassRef) compassRef.current = activeUnit.group.rotation.y
 
       if (mapRef) {
         mapRef.current = {
-          px: leaderPos.x,
-          pz: leaderPos.z,
-          pa: leader.group.rotation.y,
+          px: activePos.x,
+          pz: activePos.z,
+          pa: activeUnit.group.rotation.y,
           enemies: enemies.map((e) => ({
             x: e.group.position.x,
             z: e.group.position.z,
@@ -592,7 +595,7 @@ export default function GameScene({ selectedCharacters, movementRef, compassRef,
       renderer.dispose()
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
     }
-  }, [selectedCharacters.join(',')])
+  }, [selectedCharacters.join(','), equippedSkinsKey])
 
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />
 }

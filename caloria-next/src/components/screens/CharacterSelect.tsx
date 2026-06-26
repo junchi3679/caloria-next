@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import type { CharacterId, Character } from '../../types'
+import Mailbox from '../hud/Mailbox'
 
 // Ian is a single entity — show only one entry but allow M/F toggle
 // The store's toggleCharacter handles mutual exclusion automatically
@@ -51,8 +52,8 @@ function CharCard({
                 {ATTR_LABEL[char.attribute]}
               </span>
             </div>
-            <div className="font-hud text-xs" style={{ color: isGacha ? '#aa44ff60' : 'rgba(0,212,255,0.4)' }}>
-              {isGacha ? 'PORTAL 소환' : (char.unlockHint ?? '')}
+            <div className="font-hud text-xs" style={{ color: char.unlockType === 'limited' ? '#ffcc0060' : isGacha ? '#aa44ff60' : 'rgba(0,212,255,0.4)' }}>
+              {char.unlockType === 'limited' ? '★ 한정 소환' : isGacha ? 'PORTAL 소환' : (char.unlockHint ?? '')}
             </div>
           </div>
         </div>
@@ -103,15 +104,18 @@ function CharCard({
 }
 
 export default function CharacterSelect() {
-  const { characters, selectedCharacters, unlockedCharacters, toggleCharacter, swapIanGender, setScreen } = useGameStore()
+  const { characters, selectedCharacters, unlockedCharacters, toggleCharacter, swapIanGender, setScreen, mailbox } = useGameStore()
   const hasIan = selectedCharacters.includes('ian_m') || selectedCharacters.includes('ian_f')
   const currentIanId = selectedCharacters.includes('ian_m') ? 'ian_m' : selectedCharacters.includes('ian_f') ? 'ian_f' : null
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
+  const [mailOpen, setMailOpen] = useState(false)
+  const unreadMail = mailbox.filter((m) => !m.claimed).length
 
-  // 섹션 분류: 기본 → 스토리 → 가챠
+  // 섹션 분류: 기본 → 스토리 → 가챠 → 한정
   const defaultChars = characters.filter((c) => c.unlockType === 'default')
   const storyChars = characters.filter((c) => c.unlockType === 'story')
   const gachaChars = characters.filter((c) => c.unlockType === 'gacha')
+  const limitedChars = characters.filter((c) => c.unlockType === 'limited')
 
   const leadChar = characters.find((c) => c.id === selectedCharacters[0])
   const slotFull = selectedCharacters.length >= 4
@@ -173,18 +177,32 @@ export default function CharacterSelect() {
             <h1 className="font-hud text-3xl text-glow" style={{ letterSpacing: '0.05em' }}>SELECT OPERATIVES</h1>
             <div className="text-sm mt-1" style={{ color: 'rgba(224,240,255,0.5)' }}>최대 4명까지 함께 파견 가능</div>
           </div>
-          {/* 슬롯 카운터 + PORTAL 버튼 */}
+          {/* 슬롯 카운터 + 버튼들 */}
           <div className="flex items-center gap-3">
+            {/* 우편함 버튼 */}
+            <button
+              onClick={() => setMailOpen(true)}
+              className="font-hud text-xs px-4 py-2"
+              style={{ border: '1px solid rgba(0,212,255,0.3)', color: 'rgba(0,212,255,0.65)', background: 'rgba(0,212,255,0.05)', cursor: 'pointer', letterSpacing: '0.1em', position: 'relative' }}
+            >
+              📬 MAIL
+              {unreadMail > 0 && (
+                <span className="absolute font-hud" style={{ top: -6, right: -6, background: '#ff4466', color: '#fff', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {unreadMail}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setScreen('shop')}
+              className="font-hud text-xs px-4 py-2"
+              style={{ border: '1px solid rgba(0,212,255,0.35)', color: 'rgba(0,212,255,0.7)', background: 'rgba(0,212,255,0.06)', cursor: 'pointer', letterSpacing: '0.1em' }}
+            >
+              👗 SHOP
+            </button>
             <button
               onClick={() => setScreen('gacha')}
               className="font-hud text-xs px-4 py-2"
-              style={{
-                border: '1px solid rgba(170,68,255,0.5)',
-                color: '#cc88ff',
-                background: 'rgba(170,68,255,0.08)',
-                cursor: 'pointer',
-                letterSpacing: '0.1em',
-              }}
+              style={{ border: '1px solid rgba(170,68,255,0.5)', color: '#cc88ff', background: 'rgba(170,68,255,0.08)', cursor: 'pointer', letterSpacing: '0.1em' }}
             >
               ◈ PORTAL
             </button>
@@ -214,6 +232,7 @@ export default function CharacterSelect() {
           {renderSection('DEFAULT', defaultChars)}
           {renderSection('STORY', storyChars)}
           {renderSection('PORTAL', gachaChars)}
+          {renderSection('★ LIMITED', limitedChars)}
         </div>
 
         {/* 우측: 상세 */}
@@ -351,6 +370,7 @@ export default function CharacterSelect() {
           </div>
         </div>
       </div>
+      {mailOpen && <Mailbox onClose={() => setMailOpen(false)} />}
     </div>
   )
 }

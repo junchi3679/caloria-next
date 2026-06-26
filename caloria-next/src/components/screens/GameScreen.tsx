@@ -4,6 +4,9 @@ import HUD from '../hud/HUD'
 import Bag from '../hud/Bag'
 import MiniMap from '../hud/MiniMap'
 import CharacterSwapPanel from '../hud/CharacterSwapPanel'
+import PartySlots from '../hud/PartySlots'
+import Mailbox from '../hud/Mailbox'
+import Notice from '../hud/Notice'
 import GameScene from '../../three/GameScene'
 import PoseCamera from '../ar/PoseCamera'
 import Compass from '../hud/Compass'
@@ -17,16 +20,23 @@ const SKILL_BY_POSE: Record<DetectedPose, string> = {
 const EMPTY_MAP: MapSnapshot = { px: 0, pz: 0, pa: Math.PI, enemies: [] }
 
 export default function GameScreen() {
-  const { tickExercise, setScreen, selectedCharacters, crystals } = useGameStore()
+  const { tickExercise, setScreen, selectedCharacters, crystals, gold, equippedSkins, mailbox, standardTickets, limitedTickets, notices } = useGameStore()
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [skillFlash, setSkillFlash] = useState('')
   const [bagOpen, setBagOpen] = useState(false)
   const [swapOpen, setSwapOpen] = useState(false)
+  const [mailOpen, setMailOpen] = useState(false)
+  const [noticeOpen, setNoticeOpen] = useState(false)
+  const unreadMail = mailbox.filter((m) => !m.claimed).length
+  const unreadNotice = notices.filter((n) => !n.read).length
 
   const movementRef = useRef<MovementState>({ moving: false, direction: 'forward', speed: 0 })
   const compassRef = useRef<number>(0)
   const attackEventRef = useRef<{ pose: DetectedPose; seq: number }>({ pose: 'none', seq: 0 })
   const mapRef = useRef<MapSnapshot>(EMPTY_MAP)
+
+  // Key that changes when skin is equipped — triggers GameScene re-mount
+  const equippedSkinsKey = JSON.stringify(equippedSkins)
 
   useEffect(() => {
     tickRef.current = setInterval(() => tickExercise(), 1000)
@@ -47,6 +57,7 @@ export default function GameScreen() {
       <div className="absolute inset-0">
         <GameScene
           selectedCharacters={selectedCharacters}
+          equippedSkinsKey={equippedSkinsKey}
           movementRef={movementRef}
           compassRef={compassRef}
           attackEventRef={attackEventRef}
@@ -54,7 +65,7 @@ export default function GameScreen() {
         />
       </div>
 
-      {/* HUD */}
+      {/* HUD (상단 상태 + 파티 HP 표시) */}
       <HUD onOpenSwap={() => setSwapOpen(true)} />
 
       {/* 스킬 발동 플래시 */}
@@ -81,36 +92,98 @@ export default function GameScreen() {
         </div>
       </div>
 
-      {/* 이동 방향 인디케이터 */}
-      <MoveIndicator movementRef={movementRef} />
-
       {/* 나침반 */}
-      <div className="fixed z-40" style={{ top: 110, right: 16 }}>
+      <div className="fixed z-40" style={{ top: 150, right: 16 }}>
         <Compass compassRef={compassRef} />
       </div>
 
-      {/* 미니맵 */}
-      <div className="fixed z-40" style={{ top: 215, right: 16 }}>
+      {/* 오른쪽 중간 — 파티 슬롯 */}
+      <div className="fixed z-40" style={{ top: '50%', right: 16, transform: 'translateY(-50%)' }}>
+        <PartySlots />
+      </div>
+
+      {/* 왼쪽 중간 — 미니맵 */}
+      <div className="fixed z-40" style={{ top: 'calc(50% - 60px)', left: 12, transform: 'translateY(-50%)' }}>
         <MiniMap mapRef={mapRef} />
       </div>
 
-      {/* 가방 버튼 */}
-      <div className="fixed z-40" style={{ bottom: 230, left: 4 }}>
+      {/* 상단 중앙 — 재화 + 이동 인디케이터 + 가방 */}
+      <div className="fixed z-40 flex items-center gap-2" style={{ top: 12, left: '50%', transform: 'translateX(-50%)' }}>
+        {/* 이동 인디케이터 */}
+        <MoveIndicator movementRef={movementRef} />
+
+        {/* 재화 */}
+        <div className="sf-panel flex flex-col gap-1 px-3 py-2" style={{ minWidth: 90 }}>
+          <div className="flex items-center gap-1.5">
+            <span className="font-hud" style={{ fontSize: '0.75rem', color: '#aa44ff' }}>◈</span>
+            <span className="font-hud text-sm" style={{ color: '#cc88ff' }}>{crystals.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: '0.7rem' }}>🪙</span>
+            <span className="font-hud text-sm" style={{ color: '#ffd700' }}>{gold.toLocaleString()}</span>
+          </div>
+        </div>
+
+        {/* 가방 버튼 */}
         <button
           onClick={() => setBagOpen(true)}
           className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
-          style={{ cursor: 'pointer', minWidth: 56 }}
+          style={{ cursor: 'pointer', minWidth: 48 }}
         >
-          <span style={{ fontSize: '1.1rem', color: '#00d4ff' }}>🎒</span>
-          <span className="font-hud" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>BAG</span>
-          <span className="font-hud" style={{ fontSize: '0.55rem', color: '#cc88ff' }}>
-            ◈ {crystals >= 1000 ? `${(crystals / 1000).toFixed(1)}k` : crystals}
-          </span>
+          <span style={{ fontSize: '1rem', color: '#00d4ff' }}>🎒</span>
+          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>BAG</span>
+        </button>
+
+        {/* 우편함 버튼 */}
+        <button
+          onClick={() => setMailOpen(true)}
+          className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
+          style={{ cursor: 'pointer', minWidth: 48, position: 'relative' }}
+        >
+          <span style={{ fontSize: '1rem' }}>📬</span>
+          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>MAIL</span>
+          {unreadMail > 0 && (
+            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#ff4466', color: '#fff', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {unreadMail}
+            </div>
+          )}
+        </button>
+
+        {/* 뽑기 포탈 버튼 */}
+        <button
+          onClick={() => setScreen('gacha')}
+          className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
+          style={{ cursor: 'pointer', minWidth: 48, position: 'relative', borderColor: 'rgba(170,68,255,0.4)' }}
+        >
+          <span style={{ fontSize: '1rem' }}>🎰</span>
+          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(170,68,255,0.8)', letterSpacing: '0.08em' }}>PORTAL</span>
+          {(standardTickets + limitedTickets) > 0 && (
+            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#aa44ff', color: '#fff', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {standardTickets + limitedTickets}
+            </div>
+          )}
+        </button>
+
+        {/* 공지 버튼 */}
+        <button
+          onClick={() => setNoticeOpen(true)}
+          className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
+          style={{ cursor: 'pointer', minWidth: 48, position: 'relative', borderColor: 'rgba(255,204,0,0.3)' }}
+        >
+          <span style={{ fontSize: '1rem' }}>📢</span>
+          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(255,204,0,0.8)', letterSpacing: '0.08em' }}>NOTICE</span>
+          {unreadNotice > 0 && (
+            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#ffcc00', color: '#000', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+              {unreadNotice}
+            </div>
+          )}
         </button>
       </div>
 
       {bagOpen && <Bag onClose={() => setBagOpen(false)} />}
       {swapOpen && <CharacterSwapPanel onClose={() => setSwapOpen(false)} />}
+      {mailOpen && <Mailbox onClose={() => setMailOpen(false)} />}
+      {noticeOpen && <Notice onClose={() => setNoticeOpen(false)} />}
 
       {/* 하단 컨트롤 바 */}
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
@@ -156,20 +229,15 @@ function MoveIndicator({ movementRef }: { movementRef: React.MutableRefObject<Mo
   }, [movementRef])
 
   const DIR_ARROW: Record<string, string> = { forward: '▲', left: '◀', right: '▶' }
-  const color = ms.moving ? 'var(--sf-primary)' : 'rgba(0,212,255,0.2)'
+  const color = ms.moving ? 'var(--sf-primary)' : 'rgba(0,212,255,0.25)'
 
   return (
-    <div className="fixed z-40" style={{ bottom: 310, left: 4 }}>
-      <div className="sf-panel px-4 py-3 text-center" style={{ minWidth: 56 }}>
-        <div className="font-hud text-xs mb-1" style={{ color: 'rgba(0,212,255,0.4)', letterSpacing: '0.1em' }}>MOVE</div>
-        <div className="font-hud text-2xl transition-colors" style={{ color }}>{DIR_ARROW[ms.direction]}</div>
-        {ms.moving && (
-          <div className="font-hud mt-0.5" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.5)' }}>
-            {Math.round(ms.speed * 100)}%
-          </div>
-        )}
-        <div className="font-hud mt-1" style={{ fontSize: '0.6rem', color: ms.moving ? '#00ff88' : 'rgba(0,212,255,0.3)' }}>
-          {ms.moving ? 'ON' : 'STOP'}
+    <div className="sf-panel flex items-center gap-2 px-3 py-2">
+      <div className="font-hud text-lg transition-colors" style={{ color, lineHeight: 1 }}>{DIR_ARROW[ms.direction]}</div>
+      <div className="flex flex-col leading-none">
+        <div className="font-hud" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.4)', letterSpacing: '0.1em' }}>MOVE</div>
+        <div className="font-hud" style={{ fontSize: '0.65rem', color: ms.moving ? '#00ff88' : 'rgba(0,212,255,0.3)' }}>
+          {ms.moving ? `${Math.round(ms.speed * 100)}%` : 'STOP'}
         </div>
       </div>
     </div>

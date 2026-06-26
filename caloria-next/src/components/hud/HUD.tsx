@@ -27,10 +27,15 @@ interface HUDProps {
 export default function HUD({ onOpenSwap }: HUDProps) {
   const {
     playerLevel, playerExp, expToNextLevel, exerciseSeconds,
-    selectedCharacters, characters, activeBooster, crystals, partyHp,
+    selectedCharacters, characters, activeBooster, crystals, partyHp, activeCharIndex,
+    getEquippedStats,
   } = useGameStore()
 
+  const activeCharId = selectedCharacters[activeCharIndex] as import('../../types').CharacterId | undefined
+  const accStats = activeCharId ? getEquippedStats(activeCharId) : { hp: 0, atk: 0, def: 0, critRate: 0, critDmg: 0, skillSpeed: 0, moveSpeed: 0 }
+
   const leadChar = characters.find((c) => c.id === selectedCharacters[0])
+  const activeChar = characters.find((c) => c.id === activeCharId)
   const expPct = Math.min((playerExp / expToNextLevel) * 100, 100)
   const now = Date.now()
   const boosterActive = activeBooster && activeBooster.endsAt > now
@@ -117,58 +122,54 @@ export default function HUD({ onOpenSwap }: HUDProps) {
         </div>
       )}
 
-      {/* 중간 아래 — 파티 HP 바 */}
-      {selectedCharacters.length > 0 && (
+      {/* 중간 아래 — 활성 캐릭터 HP 바 */}
+      {activeChar && (
         <div
-          className="fixed z-40 flex gap-1.5"
-          style={{
-            bottom: 76,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            pointerEvents: 'none',
-          }}
+          className="fixed z-40"
+          style={{ bottom: 76, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}
         >
-          {selectedCharacters.map((id, i) => {
-            const char = characters.find((c) => c.id === id)
-            if (!char) return null
-            const hp = partyHp[i] ?? { cur: 300, max: 300 }
-            const pct = hp.max > 0 ? hp.cur / hp.max : 1
+          {(() => {
+            const hp = partyHp[activeCharIndex] ?? { cur: 300, max: 300 }
+            const maxHp = hp.max + (accStats.hp ?? 0)
+            const pct = maxHp > 0 ? Math.min(hp.cur / maxHp, 1) : 1
             const barColor = pct > 0.5 ? '#00ff88' : pct > 0.25 ? '#ffaa00' : '#ff3333'
-            const shortName = char.name.length > 4 ? char.name.slice(0, 4) : char.name
+
+            const STAT_SHORT: Record<string, string> = {
+              atk: 'ATK', def: 'DEF', critRate: 'CRIT%', critDmg: 'C.DMG',
+              skillSpeed: 'SKL', moveSpeed: 'MOV',
+            }
+            const bonusChips = Object.entries(accStats)
+              .filter(([k, v]) => k !== 'hp' && v > 0)
+              .map(([k, v]) => ({ label: STAT_SHORT[k] ?? k, value: v }))
+
             return (
-              <div
-                key={id}
-                className="sf-panel py-1.5"
-                style={{ padding: '6px 10px', minWidth: 80 }}
-              >
-                <div
-                  className="font-hud mb-1 truncate"
-                  style={{ fontSize: '0.58rem', color: char.color, letterSpacing: '0.05em' }}
-                >
-                  {shortName}
+              <div className="sf-panel" style={{ padding: '8px 20px', minWidth: 220 }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-hud text-sm" style={{ color: activeChar.color }}>{activeChar.name}</span>
+                  <span className="font-hud text-xs" style={{ color: 'rgba(224,240,255,0.45)' }}>
+                    {hp.cur} / {maxHp}
+                  </span>
                 </div>
-                <div
-                  className="w-full"
-                  style={{ height: 5, background: 'rgba(0,212,255,0.12)', border: '1px solid rgba(0,212,255,0.2)' }}
-                >
-                  <div
-                    style={{
-                      width: `${pct * 100}%`,
-                      height: '100%',
-                      background: barColor,
-                      transition: 'width 0.3s ease, background 0.3s ease',
-                    }}
-                  />
+                <div style={{ height: 6, background: 'rgba(0,212,255,0.12)', border: '1px solid rgba(0,212,255,0.2)' }}>
+                  <div style={{
+                    width: `${pct * 100}%`, height: '100%',
+                    background: barColor,
+                    transition: 'width 0.3s ease, background 0.3s ease',
+                  }} />
                 </div>
-                <div
-                  className="font-hud mt-0.5"
-                  style={{ fontSize: '0.52rem', color: 'rgba(224,240,255,0.45)', textAlign: 'right' }}
-                >
-                  {hp.cur}/{hp.max}
-                </div>
+                {bonusChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {bonusChips.map(({ label, value }) => (
+                      <span key={label} className="font-hud"
+                        style={{ fontSize: '0.52rem', padding: '1px 5px', background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', color: '#ffd700' }}>
+                        {label} {value}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )
-          })}
+          })()}
         </div>
       )}
     </>
