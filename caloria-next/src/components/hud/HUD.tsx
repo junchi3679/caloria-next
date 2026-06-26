@@ -4,9 +4,6 @@ import ExerciseWarning from './ExerciseWarning'
 const ATTR_LABEL: Record<string, string> = {
   arc: 'ARC', plasma: 'PLASMA', bio: 'BIO', cryo: 'CRYO', cyber: 'CYBER',
 }
-const ATTR_COLOR: Record<string, string> = {
-  arc: '#00d4ff', plasma: '#ff4466', bio: '#44ff88', cryo: '#44aaff', cyber: '#aa44ff',
-}
 const LEVEL_TIER: Record<number, string> = {
   1: 'NOVICE', 11: 'TRAINEE', 21: 'SKILLED', 41: 'EXPERT', 61: 'MASTER',
 }
