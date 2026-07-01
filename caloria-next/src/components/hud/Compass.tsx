@@ -4,7 +4,7 @@ interface Props {
   compassRef: React.MutableRefObject<number>
 }
 
-const SIZE = 80
+const SIZE = 104
 const R = SIZE / 2
 
 export default function Compass({ compassRef }: Props) {
@@ -59,8 +59,8 @@ export default function Compass({ compassRef }: Props) {
           {/* 12개 작은 눈금 */}
           {Array.from({ length: 12 }).map((_, i) => {
             const a = (i * 30 * Math.PI) / 180
-            const inner = R - 9
-            const outer = R - 4
+            const inner = R - 14
+            const outer = R - 6
             const x1 = R + Math.cos(a - Math.PI / 2) * inner
             const y1 = R + Math.sin(a - Math.PI / 2) * inner
             const x2 = R + Math.cos(a - Math.PI / 2) * outer
@@ -74,12 +74,12 @@ export default function Compass({ compassRef }: Props) {
           {/* N — 빨간색 강조 */}
           {(['N', 'E', 'S', 'W'] as const).map((dir, i) => {
             const deg = i * 90
-            const { x, y } = dirPos(deg, R - 17)
+            const { x, y } = dirPos(deg, R - 26)
             const isN = dir === 'N'
             return (
               <text key={dir} x={x} y={y}
                 textAnchor="middle" dominantBaseline="central"
-                fontSize={isN ? 11 : 9}
+                fontSize={isN ? 16 : 13}
                 fontFamily="Orbitron, monospace"
                 fontWeight={isN ? 700 : 500}
                 fill={isN ? '#ff4444' : 'rgba(0,212,255,0.85)'}
@@ -92,39 +92,39 @@ export default function Compass({ compassRef }: Props) {
 
         {/* 중앙 고정 삼각형 포인터 (항상 위쪽 = 현재 향하는 방향) */}
         <polygon
-          points={`${R},${R - 22} ${R - 4},${R - 10} ${R + 4},${R - 10}`}
+          points={`${R},${R - 33} ${R - 6},${R - 15} ${R + 6},${R - 15}`}
           fill="rgba(0,212,255,0.9)"
           stroke="rgba(0,212,255,0.3)"
           strokeWidth={0.5}
         />
         {/* 반대 방향 (뒤쪽) 작은 삼각형 */}
         <polygon
-          points={`${R},${R + 22} ${R - 3},${R + 10} ${R + 3},${R + 10}`}
+          points={`${R},${R + 33} ${R - 5},${R + 15} ${R + 5},${R + 15}`}
           fill="rgba(0,212,255,0.25)"
           strokeWidth={0}
         />
 
         {/* 중심 점 */}
-        <circle cx={R} cy={R} r={2.5} fill="rgba(0,212,255,0.8)" />
+        <circle cx={R} cy={R} r={4} fill="rgba(0,212,255,0.8)" />
 
         {/* 코너 장식 — 좌상 */}
-        <line x1={2} y1={2} x2={8} y2={2} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
-        <line x1={2} y1={2} x2={2} y2={8} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
+        <line x1={3} y1={3} x2={12} y2={3} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
+        <line x1={3} y1={3} x2={3} y2={12} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
         {/* 코너 장식 — 우하 */}
-        <line x1={SIZE - 2} y1={SIZE - 2} x2={SIZE - 8} y2={SIZE - 2} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
-        <line x1={SIZE - 2} y1={SIZE - 2} x2={SIZE - 2} y2={SIZE - 8} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
+        <line x1={SIZE - 3} y1={SIZE - 3} x2={SIZE - 12} y2={SIZE - 3} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
+        <line x1={SIZE - 3} y1={SIZE - 3} x2={SIZE - 3} y2={SIZE - 12} stroke="rgba(0,212,255,0.6)" strokeWidth={1.5} />
       </svg>
 
       {/* 현재 방위 텍스트 — 나침반 아래 */}
       <div
         style={{
           position: 'absolute',
-          bottom: -16,
+          bottom: -22,
           left: 0,
           right: 0,
           textAlign: 'center',
           fontFamily: 'Orbitron, monospace',
-          fontSize: '0.6rem',
+          fontSize: '0.85rem',
           color: 'rgba(0,212,255,0.7)',
           letterSpacing: '0.1em',
         }}

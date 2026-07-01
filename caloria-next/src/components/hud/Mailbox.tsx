@@ -67,7 +67,7 @@ function MailCard({ mail }: { mail: MailItem }) {
       </div>
 
       {!mail.claimed && !expired && (
-        <button onClick={() => claimMail(mail.id)} className="font-hud text-xs py-2 w-full"
+        <button onClick={() => claimMail(mail.id)} className="font-hud text-sm py-2.5 w-full"
           style={{ border: '1px solid rgba(0,212,255,0.5)', color: '#00d4ff', background: 'rgba(0,212,255,0.08)', cursor: 'pointer', letterSpacing: '0.1em' }}>
           수령하기
         </button>
@@ -106,12 +106,12 @@ export default function Mailbox({ onClose }: MailboxProps) {
           </div>
           <div className="flex items-center gap-2">
             {unclaimedCount > 0 && (
-              <button onClick={claimAllMail} className="font-hud text-xs px-3 py-1.5"
+              <button onClick={claimAllMail} className="font-hud text-sm px-4 py-2"
                 style={{ border: '1px solid rgba(0,255,136,0.4)', color: '#00ff88', background: 'rgba(0,255,136,0.06)', cursor: 'pointer', letterSpacing: '0.08em' }}>
                 모두 받기
               </button>
             )}
-            <button onClick={onClose} className="font-hud text-sm px-3 py-1.5"
+            <button onClick={onClose} className="font-hud text-base px-3 py-1.5"
               style={{ border: '1px solid rgba(0,212,255,0.25)', color: 'rgba(0,212,255,0.6)', cursor: 'pointer', background: 'transparent' }}>
               ✕
             </button>

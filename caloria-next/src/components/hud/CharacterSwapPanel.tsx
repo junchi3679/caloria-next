@@ -56,7 +56,7 @@ export default function CharacterSwapPanel({ onClose }: Props) {
             {hasIan && (
               <button
                 onClick={swapIanGender}
-                className="font-hud text-xs px-3 py-1"
+                className="font-hud text-sm px-4 py-2"
                 style={{
                   border: '1px solid rgba(0,212,255,0.4)',
                   color: '#00d4ff',
@@ -70,7 +70,7 @@ export default function CharacterSwapPanel({ onClose }: Props) {
             )}
             <button
               onClick={onClose}
-              className="font-hud text-xs px-3 py-1"
+              className="font-hud text-sm px-4 py-2"
               style={{ border: '1px solid rgba(255,107,53,0.3)', color: 'rgba(255,107,53,0.6)', cursor: 'pointer' }}
             >
               ✕ 닫기
@@ -107,7 +107,7 @@ export default function CharacterSwapPanel({ onClose }: Props) {
                       <button
                         onClick={() => toggleCharacter(id as CharacterId)}
                         className="font-hud"
-                        style={{ fontSize: '0.6rem', color: 'rgba(255,100,100,0.5)', cursor: 'pointer', padding: '0 2px' }}
+                        style={{ fontSize: '0.8rem', color: 'rgba(255,100,100,0.5)', cursor: 'pointer', padding: '0 4px' }}
                       >
                         ✕
                       </button>

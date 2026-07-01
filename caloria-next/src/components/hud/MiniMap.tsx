@@ -6,7 +6,7 @@ interface Props {
   mapRef: React.MutableRefObject<MapSnapshot>
 }
 
-const SIZE = 80          // 축소: 110 → 80
+const SIZE = 130
 const C = SIZE / 2
 const WORLD_RADIUS = 65
 
@@ -157,13 +157,13 @@ function ExpandedMap({ snap, onClose }: { snap: MapSnapshot; onClose: () => void
         <button
           className="font-hud"
           style={{
-            padding: '8px 20px',
+            padding: '10px 22px',
             border: '1px solid rgba(0,212,255,0.4)',
             color: 'rgba(0,212,255,0.8)',
             background: 'rgba(0,0,8,0.85)',
             cursor: 'pointer',
             letterSpacing: '0.1em',
-            fontSize: '0.75rem',
+            fontSize: '0.85rem',
           }}
           onClick={onClose}
         >
@@ -220,29 +220,29 @@ export default function MiniMap({ mapRef }: Props) {
               const [mx, my] = toMiniMap(dx, dz)
               if (mx < 0 || mx > SIZE || my < 0 || my > SIZE) return null
               return (
-                <circle key={i} cx={mx} cy={my} r={e.type === 'boss' ? 4 : 2}
+                <circle key={i} cx={mx} cy={my} r={e.type === 'boss' ? 6 : 3}
                   fill={e.type === 'boss' ? '#ff4400' : '#ff2222'} opacity={0.9} />
               )
             })}
 
             <g transform={`rotate(${headingDeg}, ${C}, ${C})`}>
-              <polygon points={`${C},${C - 7} ${C - 3.5},${C + 4} ${C + 3.5},${C + 4}`}
+              <polygon points={`${C},${C - 11} ${C - 5.5},${C + 6.5} ${C + 5.5},${C + 6.5}`}
                 fill="#00d4ff" stroke="rgba(0,212,255,0.3)" strokeWidth={0.5} />
             </g>
-            <circle cx={C} cy={C} r={1.5} fill="rgba(0,212,255,0.9)" />
+            <circle cx={C} cy={C} r={2.5} fill="rgba(0,212,255,0.9)" />
           </g>
 
           {/* 코너 장식 */}
-          <line x1={1} y1={1} x2={6} y2={1} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
-          <line x1={1} y1={1} x2={1} y2={6} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
-          <line x1={SIZE - 1} y1={SIZE - 1} x2={SIZE - 6} y2={SIZE - 1} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
-          <line x1={SIZE - 1} y1={SIZE - 1} x2={SIZE - 1} y2={SIZE - 6} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
+          <line x1={1} y1={1} x2={10} y2={1} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
+          <line x1={1} y1={1} x2={1} y2={10} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
+          <line x1={SIZE - 1} y1={SIZE - 1} x2={SIZE - 10} y2={SIZE - 1} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
+          <line x1={SIZE - 1} y1={SIZE - 1} x2={SIZE - 1} y2={SIZE - 10} stroke="rgba(0,212,255,0.5)" strokeWidth={1.2} />
         </svg>
 
         {/* 적 카운트 */}
         <div className="absolute font-hud" style={{
-          bottom: -12, left: 0, right: 0, textAlign: 'center',
-          fontSize: '0.52rem', color: 'rgba(0,212,255,0.5)', letterSpacing: '0.06em',
+          bottom: -16, left: 0, right: 0, textAlign: 'center',
+          fontSize: '0.7rem', color: 'rgba(0,212,255,0.5)', letterSpacing: '0.06em',
         }}>
           {snap.enemies.filter((e) => e.alive).length} HOSTILES
         </div>

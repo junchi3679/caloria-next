@@ -69,7 +69,7 @@ function WeaponsTab() {
                 <button
                   key={c.id}
                   onClick={() => setTargetCharId(c.id)}
-                  className="font-hud text-xs px-3 py-2 flex flex-col items-center gap-0.5"
+                  className="font-hud text-sm px-3 py-2 flex flex-col items-center gap-0.5"
                   style={{
                     border: `1px solid ${isTarget ? c.color : c.color + '40'}`,
                     background: isTarget ? `${c.color}14` : 'transparent',
@@ -113,7 +113,7 @@ function WeaponsTab() {
                 </div>
                 <div className="text-xs" style={{ color: 'rgba(224,240,255,0.45)' }}>ATK {equippedWeapon.atk}</div>
               </div>
-              <button onClick={() => unequipWeapon(targetChar.id)} className="font-hud text-xs px-2 py-1"
+              <button onClick={() => unequipWeapon(targetChar.id)} className="font-hud text-sm px-3 py-1.5"
                 style={{ border: '1px solid rgba(255,100,100,0.3)', color: 'rgba(255,100,100,0.6)', cursor: 'pointer' }}>
                 해제
               </button>
@@ -164,14 +164,14 @@ function WeaponsTab() {
                 <button
                   onClick={() => handleEquip(w.id)}
                   disabled={!canEquip}
-                  className="font-hud text-xs px-2 py-1.5 flex-shrink-0"
+                  className="font-hud px-3 py-2 flex-shrink-0"
                   style={{
                     border: `1px solid ${isEquippedByTarget ? '#00ff88' : canEquip ? rarityColor : 'rgba(255,255,255,0.1)'}`,
                     color: isEquippedByTarget ? '#00ff88' : canEquip ? rarityColor : 'rgba(255,255,255,0.2)',
                     background: isEquippedByTarget ? 'rgba(0,255,136,0.08)' : 'transparent',
                     cursor: canEquip ? 'pointer' : 'not-allowed',
-                    fontSize: '0.62rem',
-                    minWidth: 44,
+                    fontSize: '0.75rem',
+                    minWidth: 56,
                   }}
                 >
                   {isEquippedByTarget ? '장착 중' : '장착'}
@@ -217,7 +217,7 @@ function AccessoriesTab() {
               const charSlots = equippedAccessories[c.id] ?? []
               return (
                 <button key={c.id} onClick={() => setTargetCharId(c.id)}
-                  className="font-hud text-xs px-3 py-2 flex flex-col items-center gap-0.5"
+                  className="font-hud text-sm px-3 py-2 flex flex-col items-center gap-0.5"
                   style={{
                     border: `1px solid ${isTarget ? c.color : c.color + '40'}`,
                     background: isTarget ? `${c.color}14` : 'transparent',
@@ -256,7 +256,7 @@ function AccessoriesTab() {
                       </div>
                       <button onClick={() => unequipAccessory(targetCharId, acc.id)}
                         className="font-hud flex-shrink-0"
-                        style={{ fontSize: '0.55rem', padding: '2px 6px', border: '1px solid rgba(255,100,100,0.3)', color: 'rgba(255,100,100,0.6)', cursor: 'pointer' }}>
+                        style={{ fontSize: '0.7rem', padding: '4px 10px', border: '1px solid rgba(255,100,100,0.3)', color: 'rgba(255,100,100,0.6)', cursor: 'pointer' }}>
                         해제
                       </button>
                     </>
@@ -310,13 +310,13 @@ function AccessoriesTab() {
                   <button
                     onClick={() => targetCharId && (isEquippedByTarget ? unequipAccessory(targetCharId, acc.id) : equipAccessory(targetCharId, acc.id))}
                     disabled={!isEquippedByTarget && !canEquip}
-                    className="font-hud text-xs px-2 py-1 flex-shrink-0"
+                    className="font-hud px-3 py-1.5 flex-shrink-0"
                     style={{
                       border: `1px solid ${isEquippedByTarget ? '#00ff88' : canEquip ? rarityColor : 'rgba(255,255,255,0.1)'}`,
                       color: isEquippedByTarget ? '#00ff88' : canEquip ? rarityColor : 'rgba(255,255,255,0.2)',
                       background: isEquippedByTarget ? 'rgba(0,255,136,0.08)' : 'transparent',
                       cursor: (isEquippedByTarget || canEquip) ? 'pointer' : 'not-allowed',
-                      fontSize: '0.6rem', minWidth: 44,
+                      fontSize: '0.75rem', minWidth: 56,
                     }}>
                     {isEquippedByTarget ? '장착 중' : '장착'}
                   </button>
@@ -364,7 +364,7 @@ export default function Bag({ onClose }: Props) {
               <span className="font-hud text-xs" style={{ color: 'rgba(204,136,255,0.5)' }}>CRYSTALS</span>
             </div>
           </div>
-          <button onClick={onClose} className="font-hud text-sm px-3 py-1"
+          <button onClick={onClose} className="font-hud text-base px-3 py-1.5"
             style={{ border: '1px solid rgba(0,212,255,0.2)', color: 'rgba(0,212,255,0.5)', cursor: 'pointer' }}>
             ✕
           </button>
@@ -375,9 +375,9 @@ export default function Bag({ onClose }: Props) {
           {(['weapons', 'accessories', 'items'] as const).map((t) => {
             const label = t === 'weapons' ? `무기 (${inventory.length})` : t === 'accessories' ? `악세서리 (${accessories.length})` : `EXP (${expItems.length})`
             return (
-              <button key={t} onClick={() => setTab(t)} className="flex-1 font-hud py-2.5"
+              <button key={t} onClick={() => setTab(t)} className="flex-1 font-hud py-3"
                 style={{
-                  fontSize: '0.65rem',
+                  fontSize: '0.8rem',
                   background: tab === t ? 'rgba(0,212,255,0.07)' : 'transparent',
                   borderBottom: `2px solid ${tab === t ? 'rgba(0,212,255,0.5)' : 'transparent'}`,
                   color: tab === t ? 'rgba(0,212,255,0.9)' : 'rgba(0,212,255,0.3)',
@@ -407,7 +407,7 @@ export default function Bag({ onClose }: Props) {
                         <div className="font-hud text-sm mb-0.5" style={{ color: '#00d4ff' }}>{item.name}</div>
                         <div className="text-xs" style={{ color: 'rgba(0,212,255,0.5)' }}>EXP +{item.value}</div>
                       </div>
-                      <button onClick={() => useExpItem(item.id)} className="font-hud text-xs px-3 py-1.5"
+                      <button onClick={() => useExpItem(item.id)} className="font-hud text-sm px-4 py-2"
                         style={{ border: '1px solid rgba(0,255,136,0.4)', color: 'rgba(0,255,136,0.7)', cursor: 'pointer', background: 'rgba(0,255,136,0.06)' }}>
                         사용
                       </button>

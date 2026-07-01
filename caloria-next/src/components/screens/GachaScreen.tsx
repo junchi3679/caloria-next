@@ -67,10 +67,9 @@ function ExchangeTab() {
   const { shards, crystals, limitedCrystals, gold, standardTickets, limitedTickets, exchangeShards, buyTickets, buyWeapon3 } = useGameStore()
   const [msg, setMsg] = useState('')
 
-  function doExchange(to: 'crystals' | 'gold' | 'weapon3' | 'expItem') {
+  function doExchange(to: 'gold' | 'weapon3' | 'expItem') {
     const ok = exchangeShards(to)
     const MSG: Record<string, string> = {
-      crystals: `◈ ${EXCHANGE_RATES.shardsTocrystals.crystals} 크리스탈 교환 완료!`,
       gold: `🪙 ${EXCHANGE_RATES.shardsToGold.gold} 골드 교환 완료!`,
       weapon3: '⚔ 3성 무기 교환 완료!',
       expItem: `🧪 파편 압축 코어 (EXP +${EXCHANGE_RATES.shardsToExpItem.expValue}) 교환 완료!`,
@@ -149,11 +148,11 @@ function ExchangeTab() {
                 </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                <button onClick={() => doBuyTickets(banner, 1)} disabled={!can1} className="font-hud text-xs px-3 py-1.5"
+                <button onClick={() => doBuyTickets(banner, 1)} disabled={!can1} className="font-hud text-sm px-3 py-1.5"
                   style={{ border: `1px solid ${can1 ? borderColor : `${borderColor}30`}`, color: can1 ? borderColor : `${borderColor}40`, cursor: can1 ? 'pointer' : 'not-allowed', background: can1 ? `${borderColor}12` : 'transparent' }}>
                   1장
                 </button>
-                <button onClick={() => doBuyTickets(banner, 10)} disabled={!can10} className="font-hud text-xs px-3 py-1.5"
+                <button onClick={() => doBuyTickets(banner, 10)} disabled={!can10} className="font-hud text-sm px-3 py-1.5"
                   style={{ border: `1px solid ${can10 ? borderColor : `${borderColor}30`}`, color: can10 ? borderColor : `${borderColor}40`, cursor: can10 ? 'pointer' : 'not-allowed', background: can10 ? `${borderColor}12` : 'transparent' }}>
                   10장
                 </button>
@@ -167,7 +166,6 @@ function ExchangeTab() {
       <div className="sf-panel p-4 flex flex-col gap-3">
         <div className="font-hud text-xs mb-1" style={{ color: 'rgba(0,212,255,0.5)', letterSpacing: '0.15em' }}>파편 교환</div>
         {([
-          { to: 'crystals' as const,  label: '파편 → 크리스탈',    desc: `🔷 ${EXCHANGE_RATES.shardsTocrystals.shards} → ◈ ${EXCHANGE_RATES.shardsTocrystals.crystals}`,          border: '#aa44ff', enough: shards >= EXCHANGE_RATES.shardsTocrystals.shards },
           { to: 'gold' as const,      label: '파편 → 골드',        desc: `🔷 ${EXCHANGE_RATES.shardsToGold.shards} → 🪙 ${EXCHANGE_RATES.shardsToGold.gold}`,                    border: '#ffd700', enough: shards >= EXCHANGE_RATES.shardsToGold.shards },
           { to: 'weapon3' as const,   label: '파편 → 3성 무기',    desc: `🔷 ${EXCHANGE_RATES.shardsToWeapon3.shards} → ⚔ 3★ 무기 (랜덤)`,                                       border: '#aaaaaa', enough: shards >= EXCHANGE_RATES.shardsToWeapon3.shards },
           { to: 'expItem' as const,   label: '파편 → EXP 아이템',  desc: `🔷 ${EXCHANGE_RATES.shardsToExpItem.shards} → 🧪 압축 코어 (EXP +${EXCHANGE_RATES.shardsToExpItem.expValue})`, border: '#00d4ff', enough: shards >= EXCHANGE_RATES.shardsToExpItem.shards },
@@ -177,7 +175,7 @@ function ExchangeTab() {
               <div className="font-hud text-sm" style={{ color: enough ? border : `${border}55` }}>{label}</div>
               <div className="font-hud text-xs mt-0.5" style={{ color: 'rgba(224,240,255,0.4)' }}>{desc}</div>
             </div>
-            <button onClick={() => doExchange(to)} disabled={!enough} className="font-hud text-xs px-4 py-2"
+            <button onClick={() => doExchange(to)} disabled={!enough} className="font-hud text-sm px-4 py-2"
               style={{ border: `1px solid ${enough ? border : `${border}30`}`, color: enough ? border : `${border}40`, cursor: enough ? 'pointer' : 'not-allowed', background: enough ? `${border}12` : 'transparent' }}>
               교환
             </button>
@@ -211,7 +209,7 @@ function ExchangeTab() {
                     setTimeout(() => setMsg(''), 2000)
                   }}
                   disabled={!canBuy}
-                  className="font-hud text-xs py-1.5 mt-0.5"
+                  className="font-hud text-sm py-1.5 mt-0.5"
                   style={{
                     border: `1px solid ${canBuy ? '#aa88ff50' : 'rgba(255,255,255,0.08)'}`,
                     color: canBuy ? '#aa88ff' : 'rgba(255,255,255,0.2)',
@@ -312,7 +310,7 @@ function SummonTab({ banner }: { banner: 'standard' | 'limited' }) {
         {banner === 'standard' && (
           <div className="flex gap-2">
             {availableTabs.map((t) => (
-              <button key={t} onClick={() => { setTab(t); setResults(null) }} className="flex-1 font-hud text-xs py-2"
+              <button key={t} onClick={() => { setTab(t); setResults(null) }} className="flex-1 font-hud text-sm py-2.5"
                 style={{ border: `1px solid ${tab === t ? 'rgba(0,212,255,0.5)' : 'rgba(0,212,255,0.15)'}`, background: tab === t ? 'rgba(0,212,255,0.08)' : 'transparent', color: tab === t ? '#00d4ff' : 'rgba(0,212,255,0.4)', cursor: 'pointer' }}>
                 {t === 'char' ? '요원' : '무기'}
               </button>
@@ -405,7 +403,7 @@ function SummonTab({ banner }: { banner: 'standard' | 'limited' }) {
             const cost = cnt === 1 ? PULL_COST_1 : PULL_COST_10
             const canPull = !pulling && currency >= cost
             return (
-              <button key={cnt} onClick={() => handlePull(cnt as 1 | 10, 'currency')} disabled={!canPull} className="flex-1 py-3 font-hud text-xs transition-all"
+              <button key={cnt} onClick={() => handlePull(cnt as 1 | 10, 'currency')} disabled={!canPull} className="flex-1 py-3.5 font-hud text-sm transition-all"
                 style={{ border: `1px solid ${canPull ? currencyColor : `${currencyColor}25`}`, background: canPull ? `${currencyColor}12` : 'transparent', color: canPull ? currencyColor : `${currencyColor}35`, cursor: canPull ? 'pointer' : 'not-allowed', letterSpacing: '0.08em', opacity: pulling ? 0.5 : 1 }}>
                 ×{cnt} 소환 — {cost} {currencyLabel}
               </button>
@@ -418,7 +416,7 @@ function SummonTab({ banner }: { banner: 'standard' | 'limited' }) {
           {[1, 10].map((cnt) => {
             const canTicket = !pulling && tickets >= cnt
             return (
-              <button key={cnt} onClick={() => handlePull(cnt as 1 | 10, 'ticket')} disabled={!canTicket} className="flex-1 py-3 font-hud text-xs transition-all"
+              <button key={cnt} onClick={() => handlePull(cnt as 1 | 10, 'ticket')} disabled={!canTicket} className="flex-1 py-3.5 font-hud text-sm transition-all"
                 style={{ border: `1px solid ${canTicket ? currencyColor + '88' : currencyColor + '20'}`, background: canTicket ? `${currencyColor}08` : 'transparent', color: canTicket ? `${currencyColor}cc` : `${currencyColor}28`, cursor: canTicket ? 'pointer' : 'not-allowed', letterSpacing: '0.08em', opacity: pulling ? 0.5 : 1 }}>
                 {banner === 'limited' ? '🎟' : '🎫'} ×{cnt} — {ticketLabel} {cnt}장 <span style={{ opacity: 0.6 }}>(보유 {tickets})</span>
               </button>
@@ -479,7 +477,7 @@ export default function GachaScreen() {
               <span className="font-hud text-sm" style={{ color: '#ffcc00' }}>{limitedTickets}</span>
             </div>
           </div>
-          <button className="font-hud text-xs px-4 py-2"
+          <button className="font-hud text-sm px-4 py-2"
             style={{ border: '1px solid rgba(0,212,255,0.3)', color: 'rgba(0,212,255,0.6)', cursor: 'pointer' }}
             onClick={goBack}
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--sf-primary)' }}
@@ -492,7 +490,7 @@ export default function GachaScreen() {
       {/* 배너 모드 선택 */}
       <div className="relative z-10 px-8 mb-4 flex gap-2">
         {MODES.map(({ key, label, color }) => (
-          <button key={key} onClick={() => setMode(key)} className="font-hud text-sm px-6 py-2.5"
+          <button key={key} onClick={() => setMode(key)} className="font-hud text-base px-7 py-3"
             style={{
               border: `1px solid ${mode === key ? color : 'rgba(0,212,255,0.18)'}`,
               background: mode === key ? `${color}14` : 'transparent',

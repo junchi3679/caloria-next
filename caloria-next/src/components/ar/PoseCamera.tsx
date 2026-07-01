@@ -4,7 +4,22 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from '@mediapipe/tasks-
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
 
-type LM = { x: number; y: number; z: number }
+// MediaPipe Pose 랜드마크 0~10번은 얼굴(코/눈/귀/입) — 몸통 동작 인식에는 쓰이지 않으므로 표시에서 제외
+const BODY_START_IDX = 11
+const BODY_CONNECTIONS = PoseLandmarker.POSE_CONNECTIONS.filter(
+  (c) => c.start >= BODY_START_IDX && c.end >= BODY_START_IDX,
+)
+
+type LM = { x: number; y: number; z: number; visibility?: number }
+
+// 사람 다리로 인정할 최소 신뢰도 — 의자/책상 다리 같은 배경 사물은
+// 모델이 확신을 갖고 감지하지 못해 visibility가 낮게 나오는 점을 이용해 걸러낸다
+const LEG_VISIBILITY_MIN = 0.6
+const LEG_LANDMARK_IDX = [23, 24, 25, 26, 27, 28] // 좌우 엉덩이·무릎·발목
+
+function isHumanLegVisible(lm: LM[]): boolean {
+  return LEG_LANDMARK_IDX.every((i) => (lm[i]?.visibility ?? 0) >= LEG_VISIBILITY_MIN)
+}
 
 // ── 자세 판정 ──────────────────────────────────────────────
 
@@ -25,19 +40,38 @@ function detectPlank(lm: LM[]): boolean {
   return Math.abs(shoulder.y - hip.y) < 0.08 && Math.abs(hip.y - ankle.y) < 0.08
 }
 
-function detectJump(lm: LM[]): boolean {
-  const lWrist = lm[15], rWrist = lm[16], lShoulder = lm[11], rShoulder = lm[12]
-  if (!lWrist || !rWrist || !lShoulder || !rShoulder) return false
-  return lWrist.y < lShoulder.y - 0.1 && rWrist.y < rShoulder.y - 0.1
-}
-
 // ── 이동 감지 ──────────────────────────────────────────────
 
+// 무릎 높이 기록에서 방향 전환(반전) 횟수를 센다 — 걷기는 오르내림이 반복되지만
+// 스쿼트/점프 같은 단발성 동작은 반전이 1회 이하인 경우가 대부분이라 걷기와 구분할 수 있다
+function countReversals(history: number[]): number {
+  let reversals = 0
+  let lastDir = 0
+  for (let i = 1; i < history.length; i++) {
+    const diff = history[i] - history[i - 1]
+    if (Math.abs(diff) < 0.002) continue
+    const dir = diff > 0 ? 1 : -1
+    if (lastDir !== 0 && dir !== lastDir) reversals++
+    lastDir = dir
+  }
+  return reversals
+}
+
 function detectMarching(kneeHistory: number[]): boolean {
-  if (kneeHistory.length < 10) return false
+  if (kneeHistory.length < 12) return false
   const min = Math.min(...kneeHistory)
   const max = Math.max(...kneeHistory)
-  return max - min > 0.05
+  if (max - min < 0.045) return false
+  return countReversals(kneeHistory) >= 2
+}
+
+// 팔(손목 높이)이 실제로 움직였는지 판정 — 팔을 흔들면 공격이 나가도록
+function detectArmSwing(wristHistory: number[]): boolean {
+  if (wristHistory.length < 10) return false
+  const min = Math.min(...wristHistory)
+  const max = Math.max(...wristHistory)
+  if (max - min < 0.05) return false
+  return countReversals(wristHistory) >= 1
 }
 
 // 빠를수록 speed가 높아짐 (0~1): 최근 프레임의 무릎 변화량 합산
@@ -88,6 +122,7 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
   const lastPoseRef = useRef<DetectedPose>('none')
   const poseCountRef = useRef(0)
   const kneeHistoryRef = useRef<number[]>([])
+  const wristHistoryRef = useRef<number[]>([])
 
   useEffect(() => {
     let active = true
@@ -134,15 +169,33 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
 
         if (result.landmarks.length > 0) {
           const lm = result.landmarks[0]
-          draw.drawLandmarks(lm, { color: '#00d4ff', lineWidth: 2, radius: 3 })
-          draw.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: 'rgba(0,212,255,0.5)', lineWidth: 1.5 })
+          draw.drawLandmarks(lm.slice(BODY_START_IDX), { color: '#00d4ff', lineWidth: 2, radius: 3 })
+          draw.drawConnectors(lm, BODY_CONNECTIONS, { color: 'rgba(0,212,255,0.5)', lineWidth: 1.5 })
 
-          // ── 이동 감지 ──
-          const lKneeY = lm[25]?.y ?? 0
-          kneeHistoryRef.current.push(lKneeY)
-          if (kneeHistoryRef.current.length > 20) kneeHistoryRef.current.shift()
+          // ── 손목 높이 기록 — 팔을 흔드는 움직임을 감지하기 위함 ──
+          const lWristY = lm[15]?.y ?? 0
+          const rWristY = lm[16]?.y ?? 0
+          wristHistoryRef.current.push((lWristY + rWristY) / 2)
+          if (wristHistoryRef.current.length > 20) wristHistoryRef.current.shift()
 
-          const moving = detectMarching(kneeHistoryRef.current)
+          // ── 스킬 자세 감지 (이동 판정보다 먼저 계산해서 걷기와 구분) ──
+          let pose: DetectedPose = 'none'
+          if (detectSquat(lm)) pose = 'squat'
+          else if (detectPlank(lm)) pose = 'plank'
+          else if (detectArmSwing(wristHistoryRef.current)) pose = 'jump'
+
+          // ── 이동 감지 — 사람 다리가 확실히 보일 때만 (의자·책상 다리 등 오탐 방지) ──
+          const legVisible = isHumanLegVisible(lm)
+          if (legVisible) {
+            const lKneeY = lm[25]?.y ?? 0
+            kneeHistoryRef.current.push(lKneeY)
+            if (kneeHistoryRef.current.length > 20) kneeHistoryRef.current.shift()
+          } else {
+            kneeHistoryRef.current = []
+          }
+
+          // 스쿼트/플랭크/점프 등 다른 자세 중에는 이동하지 않음
+          const moving = legVisible && pose === 'none' && detectMarching(kneeHistoryRef.current)
           const direction = detectDirection(lm)
           const speed = moving ? calcMovementSpeed(kneeHistoryRef.current) : 0
           const ms: MovementState = { moving, direction, speed }
@@ -166,12 +219,6 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
             ctx!.stroke()
             ctx!.restore()
           }
-
-          // ── 스킬 자세 감지 ──
-          let pose: DetectedPose = 'none'
-          if (detectSquat(lm)) pose = 'squat'
-          else if (detectPlank(lm)) pose = 'plank'
-          else if (detectJump(lm)) pose = 'jump'
 
           if (pose !== 'none' && pose === lastPoseRef.current) {
             poseCountRef.current++
@@ -213,9 +260,9 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
 
   if (minimized) {
     return (
-      <div className="relative" style={{ width: 200, height: 150 }}>
+      <div className="relative" style={{ width: 280, height: 210 }}>
         <video ref={videoRef} muted playsInline style={{ display: 'none' }} />
-        <canvas ref={canvasRef} width={200} height={150} className="w-full h-full" style={{ transform: 'scaleX(-1)' }} />
+        <canvas ref={canvasRef} width={280} height={210} className="w-full h-full" style={{ transform: 'scaleX(-1)' }} />
 
         {status === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center font-hud text-xs pulse"
@@ -230,18 +277,18 @@ export default function PoseCamera({ onPose, movementRef, minimized = false }: P
           </div>
         )}
         {status === 'ready' && (
-          <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-2 py-1"
+          <div className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-2.5 py-1.5"
             style={{ background: 'rgba(0,10,20,0.75)', borderTop: '1px solid rgba(0,212,255,0.15)' }}>
-            <span className="font-hud" style={{ fontSize: '0.6rem', color: moveState.moving ? '#00d4ff' : 'rgba(0,212,255,0.3)' }}>
+            <span className="font-hud" style={{ fontSize: '0.75rem', color: moveState.moving ? '#00d4ff' : 'rgba(0,212,255,0.3)' }}>
               {moveState.moving ? DIR_LABEL[moveState.direction] : '■ 정지'}
             </span>
             {moveState.moving && (
-              <span className="font-hud" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.6)' }}>
+              <span className="font-hud" style={{ fontSize: '0.7rem', color: 'rgba(0,212,255,0.6)' }}>
                 SPD {Math.round(moveState.speed * 100)}%
               </span>
             )}
             {currentPose !== 'none' && (
-              <span className="font-hud" style={{ fontSize: '0.6rem', color: 'var(--sf-accent)' }}>
+              <span className="font-hud" style={{ fontSize: '0.75rem', color: 'var(--sf-accent)' }}>
                 {POSE_LABEL[currentPose]}
               </span>
             )}

@@ -5,8 +5,6 @@ import Bag from '../hud/Bag'
 import MiniMap from '../hud/MiniMap'
 import CharacterSwapPanel from '../hud/CharacterSwapPanel'
 import PartySlots from '../hud/PartySlots'
-import Mailbox from '../hud/Mailbox'
-import Notice from '../hud/Notice'
 import GameScene from '../../three/GameScene'
 import PoseCamera from '../ar/PoseCamera'
 import Compass from '../hud/Compass'
@@ -20,15 +18,11 @@ const SKILL_BY_POSE: Record<DetectedPose, string> = {
 const EMPTY_MAP: MapSnapshot = { px: 0, pz: 0, pa: Math.PI, enemies: [] }
 
 export default function GameScreen() {
-  const { tickExercise, setScreen, selectedCharacters, crystals, gold, equippedSkins, mailbox, standardTickets, limitedTickets, notices } = useGameStore()
+  const { tickExercise, setScreen, selectedCharacters, crystals, gold, equippedSkins, standardTickets, limitedTickets } = useGameStore()
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [skillFlash, setSkillFlash] = useState('')
   const [bagOpen, setBagOpen] = useState(false)
   const [swapOpen, setSwapOpen] = useState(false)
-  const [mailOpen, setMailOpen] = useState(false)
-  const [noticeOpen, setNoticeOpen] = useState(false)
-  const unreadMail = mailbox.filter((m) => !m.claimed).length
-  const unreadNotice = notices.filter((n) => !n.read).length
 
   const movementRef = useRef<MovementState>({ moving: false, direction: 'forward', speed: 0 })
   const compassRef = useRef<number>(0)
@@ -80,13 +74,13 @@ export default function GameScreen() {
         </div>
       )}
 
-      {/* 우하단 — AR 카메라 패널 */}
-      <div className="fixed bottom-16 right-4 z-40">
-        <div className="sf-panel overflow-hidden" style={{ width: 208 }}>
-          <div className="px-3 py-1.5 flex items-center gap-2"
+      {/* 좌하단 — AR 카메라 패널 */}
+      <div className="fixed bottom-4 left-4 z-40">
+        <div className="sf-panel overflow-hidden" style={{ width: 280 }}>
+          <div className="px-3 py-2 flex items-center gap-2"
             style={{ background: 'rgba(0,212,255,0.07)', borderBottom: '1px solid rgba(0,212,255,0.15)' }}>
-            <div className="w-1.5 h-1.5 rounded-full pulse" style={{ background: 'rgba(0,212,255,0.4)' }} />
-            <span className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.7)', letterSpacing: '0.1em' }}>AR POSE · MOVE</span>
+            <div className="w-2 h-2 rounded-full pulse" style={{ background: 'rgba(0,212,255,0.4)' }} />
+            <span className="font-hud text-sm" style={{ color: 'rgba(0,212,255,0.7)', letterSpacing: '0.1em' }}>AR POSE · MOVE</span>
           </div>
           <PoseCamera onPose={handlePose} movementRef={movementRef} minimized />
         </div>
@@ -99,7 +93,7 @@ export default function GameScreen() {
 
       {/* 오른쪽 중간 — 파티 슬롯 */}
       <div className="fixed z-40" style={{ top: '50%', right: 16, transform: 'translateY(-50%)' }}>
-        <PartySlots />
+        <PartySlots onSwapRequest={() => setSwapOpen(true)} />
       </div>
 
       {/* 왼쪽 중간 — 미니맵 */}
@@ -113,13 +107,13 @@ export default function GameScreen() {
         <MoveIndicator movementRef={movementRef} />
 
         {/* 재화 */}
-        <div className="sf-panel flex flex-col gap-1 px-3 py-2" style={{ minWidth: 90 }}>
+        <div className="sf-panel flex flex-col gap-1 px-3 py-2" style={{ minWidth: 96 }}>
           <div className="flex items-center gap-1.5">
-            <span className="font-hud" style={{ fontSize: '0.75rem', color: '#aa44ff' }}>◈</span>
+            <span className="font-hud" style={{ fontSize: '0.8rem', color: '#aa44ff' }}>◈</span>
             <span className="font-hud text-sm" style={{ color: '#cc88ff' }}>{crystals.toLocaleString()}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span style={{ fontSize: '0.7rem' }}>🪙</span>
+            <span style={{ fontSize: '0.75rem' }}>🪙</span>
             <span className="font-hud text-sm" style={{ color: '#ffd700' }}>{gold.toLocaleString()}</span>
           </div>
         </div>
@@ -130,23 +124,8 @@ export default function GameScreen() {
           className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
           style={{ cursor: 'pointer', minWidth: 48 }}
         >
-          <span style={{ fontSize: '1rem', color: '#00d4ff' }}>🎒</span>
-          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>BAG</span>
-        </button>
-
-        {/* 우편함 버튼 */}
-        <button
-          onClick={() => setMailOpen(true)}
-          className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
-          style={{ cursor: 'pointer', minWidth: 48, position: 'relative' }}
-        >
-          <span style={{ fontSize: '1rem' }}>📬</span>
-          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>MAIL</span>
-          {unreadMail > 0 && (
-            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#ff4466', color: '#fff', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {unreadMail}
-            </div>
-          )}
+          <span style={{ fontSize: '1.15rem', color: '#00d4ff' }}>🎒</span>
+          <span className="font-hud" style={{ fontSize: '0.6rem', color: 'rgba(0,212,255,0.6)', letterSpacing: '0.08em' }}>BAG</span>
         </button>
 
         {/* 뽑기 포탈 버튼 */}
@@ -155,67 +134,28 @@ export default function GameScreen() {
           className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
           style={{ cursor: 'pointer', minWidth: 48, position: 'relative', borderColor: 'rgba(170,68,255,0.4)' }}
         >
-          <span style={{ fontSize: '1rem' }}>🎰</span>
-          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(170,68,255,0.8)', letterSpacing: '0.08em' }}>PORTAL</span>
+          <span style={{ fontSize: '1.15rem' }}>🎰</span>
+          <span className="font-hud" style={{ fontSize: '0.6rem', color: 'rgba(170,68,255,0.8)', letterSpacing: '0.08em' }}>PORTAL</span>
           {(standardTickets + limitedTickets) > 0 && (
-            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#aa44ff', color: '#fff', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#aa44ff', color: '#fff', fontSize: '0.55rem', width: 17, height: 17, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {standardTickets + limitedTickets}
             </div>
           )}
         </button>
 
-        {/* 공지 버튼 */}
+        {/* 메뉴 버튼 */}
         <button
-          onClick={() => setNoticeOpen(true)}
+          onClick={() => setScreen('character_select')}
           className="sf-panel flex flex-col items-center px-3 py-2 gap-1"
-          style={{ cursor: 'pointer', minWidth: 48, position: 'relative', borderColor: 'rgba(255,204,0,0.3)' }}
+          style={{ cursor: 'pointer', minWidth: 48, borderColor: 'rgba(255,107,53,0.4)' }}
         >
-          <span style={{ fontSize: '1rem' }}>📢</span>
-          <span className="font-hud" style={{ fontSize: '0.5rem', color: 'rgba(255,204,0,0.8)', letterSpacing: '0.08em' }}>NOTICE</span>
-          {unreadNotice > 0 && (
-            <div className="absolute font-hud" style={{ top: -4, right: -4, background: '#ffcc00', color: '#000', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-              {unreadNotice}
-            </div>
-          )}
+          <span style={{ fontSize: '1.15rem', color: '#ff6b35' }}>☰</span>
+          <span className="font-hud" style={{ fontSize: '0.6rem', color: 'rgba(255,107,53,0.8)', letterSpacing: '0.08em' }}>MENU</span>
         </button>
       </div>
 
       {bagOpen && <Bag onClose={() => setBagOpen(false)} />}
       {swapOpen && <CharacterSwapPanel onClose={() => setSwapOpen(false)} />}
-      {mailOpen && <Mailbox onClose={() => setMailOpen(false)} />}
-      {noticeOpen && <Notice onClose={() => setNoticeOpen(false)} />}
-
-      {/* 하단 컨트롤 바 */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
-        <div className="sf-panel px-6 py-3 flex items-center gap-4">
-          <div className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.5)', letterSpacing: '0.1em' }}>
-            ARID-9 · WORLD 01
-          </div>
-          <div className="h-4 w-px" style={{ background: 'rgba(0,212,255,0.2)' }} />
-          <div className="flex gap-4 text-xs" style={{ color: 'rgba(224,240,255,0.5)' }}>
-            <span><span className="font-hud" style={{ color: 'var(--sf-primary)' }}>제자리 걸음</span> 이동</span>
-            <span><span className="font-hud" style={{ color: 'var(--sf-primary)' }}>몸 기울기</span> 방향</span>
-            <span><span className="font-hud" style={{ color: 'var(--sf-primary)' }}>운동 자세</span> 공격</span>
-          </div>
-          <div className="h-4 w-px" style={{ background: 'rgba(0,212,255,0.2)' }} />
-          <button
-            className="font-hud text-xs px-3 py-1"
-            style={{ border: '1px solid rgba(0,212,255,0.4)', color: 'rgba(0,212,255,0.7)', cursor: 'pointer' }}
-            onClick={() => setSwapOpen(true)}
-          >
-            PARTY
-          </button>
-          <button
-            className="font-hud text-xs px-3 py-1"
-            style={{ border: '1px solid rgba(255,107,53,0.4)', color: 'rgba(255,107,53,0.7)', cursor: 'pointer' }}
-            onClick={() => setScreen('character_select')}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--sf-accent)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,107,53,0.7)' }}
-          >
-            MENU
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -232,11 +172,11 @@ function MoveIndicator({ movementRef }: { movementRef: React.MutableRefObject<Mo
   const color = ms.moving ? 'var(--sf-primary)' : 'rgba(0,212,255,0.25)'
 
   return (
-    <div className="sf-panel flex items-center gap-2 px-3 py-2">
-      <div className="font-hud text-lg transition-colors" style={{ color, lineHeight: 1 }}>{DIR_ARROW[ms.direction]}</div>
+    <div className="sf-panel flex items-center gap-3 px-4 py-3">
+      <div className="font-hud text-3xl transition-colors" style={{ color, lineHeight: 1 }}>{DIR_ARROW[ms.direction]}</div>
       <div className="flex flex-col leading-none">
-        <div className="font-hud" style={{ fontSize: '0.55rem', color: 'rgba(0,212,255,0.4)', letterSpacing: '0.1em' }}>MOVE</div>
-        <div className="font-hud" style={{ fontSize: '0.65rem', color: ms.moving ? '#00ff88' : 'rgba(0,212,255,0.3)' }}>
+        <div className="font-hud" style={{ fontSize: '0.7rem', color: 'rgba(0,212,255,0.4)', letterSpacing: '0.1em' }}>MOVE</div>
+        <div className="font-hud" style={{ fontSize: '0.9rem', color: ms.moving ? '#00ff88' : 'rgba(0,212,255,0.3)' }}>
           {ms.moving ? `${Math.round(ms.speed * 100)}%` : 'STOP'}
         </div>
       </div>

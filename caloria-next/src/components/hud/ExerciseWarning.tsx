@@ -55,7 +55,7 @@ export default function ExerciseWarning() {
         {/* 닫기 */}
         <button
           onClick={dismiss}
-          className="flex-shrink-0 font-hud text-xs px-2 py-1 transition-colors"
+          className="flex-shrink-0 font-hud text-sm px-3 py-1.5 transition-colors"
           style={{ color: 'rgba(255,170,0,0.7)', border: '1px solid rgba(255,170,0,0.3)' }}
           onMouseEnter={(e) => (e.currentTarget.style.color = '#ffaa00')}
           onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(255,170,0,0.7)')}

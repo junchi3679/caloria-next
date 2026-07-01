@@ -110,7 +110,6 @@ const EMPTY_STATS: Record<AccessoryStat, number> = {
 }
 
 export const EXCHANGE_RATES = {
-  shardsTocrystals: { shards: 80, crystals: 80 },
   shardsToGold: { shards: 50, gold: 500 },
   shardsToWeapon3: { shards: 30 },
   shardsToExpItem: { shards: 20, expValue: 150 },
@@ -254,7 +253,7 @@ interface GameState {
   getEquippedStats: (charId: CharacterId) => Record<AccessoryStat, number>
   initPartyHp: (count: number) => void
   damagePartyMember: (idx: number, dmg: number) => void
-  exchangeShards: (to: 'crystals' | 'gold' | 'weapon3' | 'expItem') => boolean
+  exchangeShards: (to: 'gold' | 'weapon3' | 'expItem') => boolean
   buySkin: (skinId: string, currency: 'crystals' | 'gold') => boolean
   equipSkin: (charId: CharacterId, skinId: string | null) => void
   claimMail: (id: string) => void
@@ -416,7 +415,7 @@ export const useGameStore = create<GameState>()(
         const newUnlocked = [...unlockedCharacters]
         let totalShardComp = 0
 
-        const accDropRate = type === 'char' ? 0.15 : 0.20
+        const accDropRate = type === 'weapon' ? 0.20 : useLimited ? 0.25 : 0.15
 
         for (let i = 0; i < count; i++) {
           if (Math.random() < accDropRate) {
@@ -523,11 +522,7 @@ export const useGameStore = create<GameState>()(
 
       exchangeShards: (to) => {
         const { shards } = get()
-        if (to === 'crystals') {
-          const { shards: need, crystals: give } = EXCHANGE_RATES.shardsTocrystals
-          if (shards < need) return false
-          set((s) => ({ shards: s.shards - need, crystals: s.crystals + give }))
-        } else if (to === 'gold') {
+        if (to === 'gold') {
           const { shards: need, gold: give } = EXCHANGE_RATES.shardsToGold
           if (shards < need) return false
           set((s) => ({ shards: s.shards - need, gold: s.gold + give }))
@@ -672,7 +667,6 @@ export const useGameStore = create<GameState>()(
         playerLevel: s.playerLevel,
         playerExp: s.playerExp,
         expToNextLevel: s.expToNextLevel,
-        exerciseSeconds: s.exerciseSeconds,
         // 캐릭터
         unlockedCharacters: s.unlockedCharacters,
         selectedCharacters: s.selectedCharacters,

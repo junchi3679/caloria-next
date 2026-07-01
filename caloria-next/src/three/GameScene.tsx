@@ -120,6 +120,28 @@ function buildLowPolyCharacter(headColor: number, bodyColor = 0x3d2a7a) {
   return { group, legs: [legL, legR] as THREE.Mesh[], arms: [armL, armR] as THREE.Mesh[] }
 }
 
+// ── 데미지 숫자 스프라이트 ─────────────────────────────────
+function createDamageSprite(amount: number, color: string): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 64
+  const ctx = canvas.getContext('2d')!
+  ctx.font = 'bold 42px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineWidth = 6
+  ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+  ctx.strokeText(`-${amount}`, 64, 32)
+  ctx.fillStyle = color
+  ctx.fillText(`-${amount}`, 64, 32)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false })
+  const sprite = new THREE.Sprite(material)
+  sprite.scale.set(1.7, 0.85, 1)
+  return sprite
+}
+
 function buildEnemy(type: 'mob' | 'boss'): Enemy {
   const isBoss = type === 'boss'
   const s = isBoss ? 2.2 : 1.0
@@ -388,6 +410,16 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
     scene.add(boss.hpBarPivot)
     enemies.push(boss)
 
+    const damageNumbers: { sprite: THREE.Sprite; life: number; maxLife: number }[] = []
+    const DMG_NUMBER_LIFE = 40
+
+    function spawnDamageNumber(pos: THREE.Vector3, amount: number, color: string) {
+      const sprite = createDamageSprite(amount, color)
+      sprite.position.set(pos.x + (Math.random() - 0.5) * 0.6, pos.y + 2.2, pos.z)
+      scene.add(sprite)
+      damageNumbers.push({ sprite, life: DMG_NUMBER_LIFE, maxLife: DMG_NUMBER_LIFE })
+    }
+
     const animRef = { id: 0 }
 
     function animate() {
@@ -460,6 +492,7 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
             if (e.group.position.distanceTo(activePos) <= ATTACK_RANGE) {
               e.hp = Math.max(e.hp - dmg, 0)
               e.hitFlashTimer = 8
+              spawnDamageNumber(e.group.position, dmg, '#ffcc00')
               if (e.hp <= 0) {
                 e.state = 'dying'
                 e.dyingTimer = 24
@@ -554,6 +587,21 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
       }
       particleGeo.attributes.position.needsUpdate = true
 
+      // 데미지 숫자 — 위로 떠오르며 서서히 사라짐
+      for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        const d = damageNumbers[i]
+        d.life--
+        d.sprite.position.y += 0.035
+        const mat = d.sprite.material as THREE.SpriteMaterial
+        mat.opacity = Math.max(d.life / d.maxLife, 0)
+        if (d.life <= 0) {
+          scene.remove(d.sprite)
+          mat.map?.dispose()
+          mat.dispose()
+          damageNumbers.splice(i, 1)
+        }
+      }
+
       // Camera follows active character
       const desiredCam = activePos.clone().add(
         CAM_OFFSET.clone().applyEuler(new THREE.Euler(0, activeUnit.group.rotation.y - Math.PI, 0)),
@@ -595,6 +643,11 @@ export default function GameScene({ selectedCharacters, equippedSkinsKey = '', m
     return () => {
       cancelAnimationFrame(animRef.id)
       window.removeEventListener('resize', onResize)
+      damageNumbers.forEach((d) => {
+        const mat = d.sprite.material as THREE.SpriteMaterial
+        mat.map?.dispose()
+        mat.dispose()
+      })
       renderer.dispose()
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement)
     }

@@ -48,7 +48,7 @@ export default function SkinShop() {
             <span className="font-hud text-base" style={{ color: '#ffd700' }}>{gold.toLocaleString()}</span>
           </div>
           <button
-            className="font-hud text-xs px-4 py-2 transition-colors"
+            className="font-hud text-sm px-5 py-2.5 transition-colors"
             style={{ border: '1px solid rgba(0,212,255,0.3)', color: 'rgba(0,212,255,0.6)', cursor: 'pointer' }}
             onClick={() => setScreen('character_select')}
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--sf-primary)' }}
@@ -144,7 +144,7 @@ export default function SkinShop() {
                   {owned ? (
                     <button
                       onClick={() => handleEquip(skin.id)}
-                      className="font-hud text-xs py-2 w-full"
+                      className="font-hud text-sm py-2.5 w-full"
                       style={{
                         border: `1px solid ${isEquipped ? charColor : 'rgba(0,255,136,0.4)'}`,
                         color: isEquipped ? charColor : '#00ff88',
@@ -160,7 +160,7 @@ export default function SkinShop() {
                         <button
                           onClick={() => handleBuy(skin.id, 'crystals')}
                           disabled={!canAffordCrystals}
-                          className="font-hud text-xs py-2 w-full"
+                          className="font-hud text-sm py-2.5 w-full"
                           style={{
                             border: `1px solid ${canAffordCrystals ? '#aa44ff' : 'rgba(170,68,255,0.2)'}`,
                             color: canAffordCrystals ? '#cc88ff' : 'rgba(170,68,255,0.3)',
@@ -175,7 +175,7 @@ export default function SkinShop() {
                         <button
                           onClick={() => handleBuy(skin.id, 'gold')}
                           disabled={!canAffordGold}
-                          className="font-hud text-xs py-2 w-full"
+                          className="font-hud text-sm py-2.5 w-full"
                           style={{
                             border: `1px solid ${canAffordGold ? '#ffd700' : 'rgba(255,215,0,0.2)'}`,
                             color: canAffordGold ? '#ffd700' : 'rgba(255,215,0,0.3)',

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import type { CharacterId, Character } from '../../types'
+import Notice from '../hud/Notice'
 import Mailbox from '../hud/Mailbox'
 
 // Ian is a single entity — show only one entry but allow M/F toggle
@@ -104,11 +105,13 @@ function CharCard({
 }
 
 export default function CharacterSelect() {
-  const { characters, selectedCharacters, unlockedCharacters, toggleCharacter, swapIanGender, setScreen, mailbox } = useGameStore()
+  const { characters, selectedCharacters, unlockedCharacters, toggleCharacter, swapIanGender, setScreen, notices, mailbox } = useGameStore()
   const hasIan = selectedCharacters.includes('ian_m') || selectedCharacters.includes('ian_f')
   const currentIanId = selectedCharacters.includes('ian_m') ? 'ian_m' : selectedCharacters.includes('ian_f') ? 'ian_f' : null
   const [hoveredAttr, setHoveredAttr] = useState<string | null>(null)
+  const [noticeOpen, setNoticeOpen] = useState(false)
   const [mailOpen, setMailOpen] = useState(false)
+  const unreadNotice = notices.filter((n) => !n.read).length
   const unreadMail = mailbox.filter((m) => !m.claimed).length
 
   // 섹션 분류: 기본 → 스토리 → 가챠 → 한정
@@ -179,10 +182,23 @@ export default function CharacterSelect() {
           </div>
           {/* 슬롯 카운터 + 버튼들 */}
           <div className="flex items-center gap-3">
+            {/* 공지 버튼 */}
+            <button
+              onClick={() => setNoticeOpen(true)}
+              className="font-hud text-sm px-5 py-2.5"
+              style={{ border: '1px solid rgba(255,204,0,0.3)', color: 'rgba(255,204,0,0.75)', background: 'rgba(255,204,0,0.05)', cursor: 'pointer', letterSpacing: '0.1em', position: 'relative' }}
+            >
+              📢 NOTICE
+              {unreadNotice > 0 && (
+                <span className="absolute font-hud" style={{ top: -6, right: -6, background: '#ffcc00', color: '#000', fontSize: '0.5rem', width: 16, height: 16, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
+                  {unreadNotice}
+                </span>
+              )}
+            </button>
             {/* 우편함 버튼 */}
             <button
               onClick={() => setMailOpen(true)}
-              className="font-hud text-xs px-4 py-2"
+              className="font-hud text-sm px-5 py-2.5"
               style={{ border: '1px solid rgba(0,212,255,0.3)', color: 'rgba(0,212,255,0.65)', background: 'rgba(0,212,255,0.05)', cursor: 'pointer', letterSpacing: '0.1em', position: 'relative' }}
             >
               📬 MAIL
@@ -194,14 +210,14 @@ export default function CharacterSelect() {
             </button>
             <button
               onClick={() => setScreen('shop')}
-              className="font-hud text-xs px-4 py-2"
+              className="font-hud text-sm px-5 py-2.5"
               style={{ border: '1px solid rgba(0,212,255,0.35)', color: 'rgba(0,212,255,0.7)', background: 'rgba(0,212,255,0.06)', cursor: 'pointer', letterSpacing: '0.1em' }}
             >
               👗 SHOP
             </button>
             <button
               onClick={() => setScreen('gacha')}
-              className="font-hud text-xs px-4 py-2"
+              className="font-hud text-sm px-5 py-2.5"
               style={{ border: '1px solid rgba(170,68,255,0.5)', color: '#cc88ff', background: 'rgba(170,68,255,0.08)', cursor: 'pointer', letterSpacing: '0.1em' }}
             >
               ◈ PORTAL
@@ -236,37 +252,37 @@ export default function CharacterSelect() {
         </div>
 
         {/* 우측: 상세 */}
-        <div className="flex-1 flex flex-col gap-4">
-          <div className="sf-panel flex-1 p-6 holo-flicker">
+        <div className="flex-1 flex flex-col gap-4" style={{ maxWidth: 420 }}>
+          <div className="sf-panel flex-1 p-3 holo-flicker">
             {leadChar ? (
               <div className="h-full flex flex-col">
-                <div className="flex items-start gap-4 mb-6">
-                  <div className="w-14 h-14 flex items-center justify-center flex-shrink-0" style={{
+                <div className="flex items-start gap-2 mb-3">
+                  <div className="w-9 h-9 flex items-center justify-center flex-shrink-0" style={{
                     border: `1px solid ${ATTR_COLOR[leadChar.attribute]}50`,
                     background: `${ATTR_COLOR[leadChar.attribute]}10`,
                   }}>
-                    <span className="font-hud text-xs" style={{ color: ATTR_COLOR[leadChar.attribute] }}>
+                    <span className="font-hud" style={{ fontSize: '0.55rem', color: ATTR_COLOR[leadChar.attribute] }}>
                       {ATTR_LABEL[leadChar.attribute]}
                     </span>
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h2 className="font-hud text-2xl" style={{ color: ATTR_COLOR[leadChar.attribute] }}>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <h2 className="font-hud text-base" style={{ color: ATTR_COLOR[leadChar.attribute] }}>
                         {leadChar.name}
                       </h2>
                       <span className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.5)' }}>LEADER</span>
                     </div>
-                    <div className="text-sm" style={{ color: 'rgba(0,212,255,0.6)' }}>
+                    <div className="text-xs" style={{ color: 'rgba(0,212,255,0.6)' }}>
                       {ATTR_DESC[leadChar.attribute]}
                     </div>
                   </div>
                 </div>
 
-                <div className="mb-4" style={{ borderBottom: '1px solid rgba(0,212,255,0.15)' }} />
+                <div className="mb-2" style={{ borderBottom: '1px solid rgba(0,212,255,0.15)' }} />
 
                 {/* 이안 성별 스왑 버튼 */}
                 {hasIan && leadChar && (currentIanId === leadChar.id || selectedCharacters[0] === leadChar.id) && (
-                  <div className="mb-4 flex items-center gap-3">
+                  <div className="mb-2 flex items-center gap-1.5">
                     <span className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.5)' }}>성별</span>
                     {(['ian_m', 'ian_f'] as CharacterId[]).map((id) => {
                       const isActive = selectedCharacters.includes(id)
@@ -274,7 +290,7 @@ export default function CharacterSelect() {
                         <button
                           key={id}
                           onClick={() => { if (!isActive) swapIanGender() }}
-                          className="font-hud text-xs px-3 py-1"
+                          className="font-hud text-sm px-3 py-1.5"
                           style={{
                             border: `1px solid ${isActive ? '#00d4ff' : 'rgba(0,212,255,0.2)'}`,
                             color: isActive ? '#00d4ff' : 'rgba(0,212,255,0.35)',
@@ -290,25 +306,25 @@ export default function CharacterSelect() {
                   </div>
                 )}
 
-                <div className="mb-5">
-                  <div className="font-hud text-xs mb-2" style={{ color: 'rgba(0,212,255,0.5)', letterSpacing: '0.15em' }}>BACKGROUND</div>
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(224,240,255,0.8)' }}>
+                <div className="mb-2">
+                  <div className="font-hud mb-1" style={{ fontSize: '0.65rem', color: 'rgba(0,212,255,0.5)', letterSpacing: '0.15em' }}>BACKGROUND</div>
+                  <p className="leading-snug" style={{ fontSize: '0.7rem', color: 'rgba(224,240,255,0.8)' }}>
                     {leadChar.description}
                   </p>
                 </div>
 
                 {selectedCharacters.length > 1 && (
-                  <div className="mb-5">
-                    <div className="font-hud text-xs mb-3" style={{ color: 'rgba(0,212,255,0.5)', letterSpacing: '0.15em' }}>PARTY</div>
-                    <div className="flex flex-col gap-1.5">
+                  <div className="mb-2">
+                    <div className="font-hud mb-1.5" style={{ fontSize: '0.65rem', color: 'rgba(0,212,255,0.5)', letterSpacing: '0.15em' }}>PARTY</div>
+                    <div className="flex flex-col gap-0.5">
                       {selectedCharacters.map((id, i) => {
                         const c = characters.find((ch) => ch.id === id)!
                         return (
-                          <div key={id} className="flex items-center gap-3">
-                            <span className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.35)', width: 28 }}>
+                          <div key={id} className="flex items-center gap-1.5">
+                            <span className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.35)', width: 22 }}>
                               {['1ST', '2ND', '3RD', '4TH'][i]}
                             </span>
-                            <div className="w-2 h-2" style={{ background: c.color, flexShrink: 0 }} />
+                            <div className="w-1.5 h-1.5" style={{ background: c.color, flexShrink: 0 }} />
                             <span className="font-hud text-xs" style={{ color: c.color }}>{c.name}</span>
                           </div>
                         )
@@ -320,7 +336,7 @@ export default function CharacterSelect() {
                 <div className="flex-1" />
 
                 {slotFull && (
-                  <div className="font-hud text-xs mb-3 text-center" style={{ color: 'rgba(0,212,255,0.4)' }}>
+                  <div className="font-hud text-xs mb-2 text-center" style={{ color: 'rgba(0,212,255,0.4)' }}>
                     슬롯 가득 참 — 클릭하여 해제
                   </div>
                 )}
@@ -328,7 +344,7 @@ export default function CharacterSelect() {
                 <button
                   className="sf-btn-accent w-full py-3"
                   style={{
-                    fontFamily: 'Orbitron, monospace', fontSize: '0.75rem', letterSpacing: '0.15em',
+                    fontFamily: 'Orbitron, monospace', fontSize: '0.85rem', letterSpacing: '0.15em',
                     border: `1px solid ${ATTR_COLOR[leadChar.attribute]}`,
                     color: ATTR_COLOR[leadChar.attribute],
                     background: `${ATTR_COLOR[leadChar.attribute]}10`,
@@ -344,8 +360,8 @@ export default function CharacterSelect() {
             ) : (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
-                  <div className="font-hud text-4xl mb-4 pulse" style={{ color: 'rgba(0,212,255,0.2)' }}>◈</div>
-                  <div className="font-hud text-sm" style={{ color: 'rgba(0,212,255,0.3)', letterSpacing: '0.15em' }}>SELECT AN OPERATIVE</div>
+                  <div className="font-hud text-3xl mb-3 pulse" style={{ color: 'rgba(0,212,255,0.2)' }}>◈</div>
+                  <div className="font-hud text-xs" style={{ color: 'rgba(0,212,255,0.3)', letterSpacing: '0.15em' }}>SELECT AN OPERATIVE</div>
                 </div>
               </div>
             )}
@@ -370,6 +386,7 @@ export default function CharacterSelect() {
           </div>
         </div>
       </div>
+      {noticeOpen && <Notice onClose={() => setNoticeOpen(false)} />}
       {mailOpen && <Mailbox onClose={() => setMailOpen(false)} />}
     </div>
   )

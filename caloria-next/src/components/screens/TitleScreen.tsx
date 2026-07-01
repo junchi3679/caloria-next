@@ -54,8 +54,8 @@ export default function TitleScreen() {
 
         {/* 시작 버튼 */}
         <button
-          className="sf-btn-accent px-12 py-4"
-          style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.8rem', letterSpacing: '0.2em' }}
+          className="sf-btn-accent px-14 py-4.5"
+          style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.95rem', letterSpacing: '0.2em' }}
           onClick={() => setScreen('character_select')}
         >
           LAUNCH MISSION
